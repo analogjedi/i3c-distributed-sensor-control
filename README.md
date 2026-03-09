@@ -7,26 +7,42 @@ This repository now serves two purposes:
 
 Current code and planning artifacts:
 
-- `rtl/i3c_sdr_controller.v`: Synthesizable controller for single-byte SDR-style transfers.
+- `rtl/i3c_bus_engine.v`: Low-level SDR bus engine for START/STOP, byte transfer, and ACK/NACK handling.
+- `rtl/i3c_ctrl_txn_layer.v`: Transaction layer wrapper above the bus engine.
+- `rtl/i3c_sdr_controller.v`: Compatibility wrapper preserving the original simple controller interface.
+- `rtl/i3c_ctrl_daa.v`: Controller-side dynamic-address assignment state scaffolding.
+- `rtl/i3c_target_transport.v`: Synthesizable SDR target transport block.
+- `rtl/i3c_target_daa.v`: Target-side dynamic-address state block.
+- `rtl/i3c_target_top.v`: Target integration wrapper joining transport and DAA state.
 - `rtl/spartan7_i3c_top.v`: Example top-level wrapper for Spartan-7 (includes Xilinx `IOBUF` usage).
 - `tb/i3c_target_model.v`: Simple behavioral target model for simulation.
 - `tb/tb_i3c_sdr_controller.v`: Happy-path testbench that runs one write + one read transaction.
 - `tb/tb_i3c_sdr_nack.v`: Negative-path testbench that verifies address-miss NACK handling.
+- `tb/tb_i3c_target_transport.v`: Regression using the synthesizable target transport in `rtl/`.
+- `tb/tb_i3c_daa_state.v`: Regression for controller/target dynamic-address state handling.
 - `constraints/spartan7_i3c_demo.xdc`: Constraint template to adapt to your board.
 - `Makefile`: Simulation runner (`iverilog` + `vvp`).
 - `docs/I3C_Closed_System_IP_Plan.md`: original program plan.
 - `docs/I3C_Architecture_Baseline.md`: consolidated architecture and phase baseline.
 - `docs/I3C_Compatibility_Contract_v0_1.md`: initial closed-system interoperability contract.
+- `docs/I3C_Controller_Target_Implementation_Plan.md`: detailed controller/target RTL implementation plan.
 - `docs/chat_summaries/`: archived markdown summaries from the earlier project threads.
 
 ## Important Scope Notes
 
-The RTL in this repo is still a bring-up baseline, not a full I3C Basic implementation. It does **not** yet include:
+The RTL in this repo is still a bring-up baseline plus early Phase 1 scaffolding, not a full I3C Basic implementation. It does **not** yet include:
 
-- Dynamic Address Assignment (`ENTDAA`)
+- Bus-level `ENTDAA` transaction sequencing
 - Common Command Codes (CCC)
 - In-band interrupts (IBI)
 - HDR modes
+
+What now exists beyond the original Phase 0 baseline:
+
+- refactored controller transport stack with bus-engine and transaction-layer split
+- synthesizable target transport in `rtl/`
+- controller-side and target-side dynamic-address state scaffolding
+- dedicated regressions for target transport and DAA state behavior
 
 It gives you a clean path to:
 
@@ -44,6 +60,8 @@ Expected result:
 
 - `sim-rw` prints `PASS` after a write and a read
 - `sim-nack` prints `PASS` after an address-miss NACK case
+- `sim-target` prints `PASS` against the synthesizable target transport
+- `sim-daa` prints `PASS` for controller/target dynamic-address state handling
 
 If you only want the original happy-path test:
 
@@ -62,7 +80,9 @@ Use these docs as the current source of truth for the larger project direction:
 In short:
 
 - Phase 0 in this repo is a minimal SDR transport bring-up path for Spartan-7.
-- Phase 1 expands toward the closed-system profile: DAA, CCC subset, reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
+- Phase 0.5 is now implemented: controller refactor plus synthesizable target transport.
+- Phase 1 has started with DAA state scaffolding, but not full bus-level `ENTDAA` sequencing yet.
+- The remaining Phase 1 work is CCC subset, real address-assignment flow, reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
 ## Vivado Bring-up
