@@ -1,7 +1,7 @@
 # I3C Compatibility Contract v0.1
 
 ## 1. Purpose
-This contract defines the minimum interoperable behavior expected between the project Hub Controller and the custom Motor and Touch endpoints on the shared I3C bus.
+This contract defines the minimum interoperable behavior expected between the project Hub Controller and the custom distributed sensor endpoints on the shared I3C bus.
 
 This is not a general interoperability promise. It is the source of truth for the closed-system profile implemented by this repository and its companion device RTL.
 
@@ -10,8 +10,8 @@ Applies to:
 - one Hub Controller
 - up to eight total endpoints
 - current baseline product profile of six endpoints:
-  - three motor devices
-  - three touch devices
+  - three high-rate control-sensor devices
+  - three human-interface sensor devices
 
 Excludes for v0.1:
 - HDR modes
@@ -50,8 +50,8 @@ Each CCC adopted into the implementation must have a documented request/response
 
 ## 6. IBI Policy
 - IBI is supported selectively, not as the default path for routine telemetry.
-- Motor endpoints may use IBI for urgent fault or protection events.
-- Touch endpoints should default to scheduler-driven reporting unless latency analysis proves IBI is necessary.
+- High-rate control-sensor endpoints may use IBI for urgent fault or protection events.
+- Human-interface sensor endpoints should default to scheduler-driven reporting unless latency analysis proves IBI is necessary.
 - The Hub policy layer owns enable/disable decisions for IBI-capable events.
 
 ## 7. Reset and Error Recovery Policy
@@ -84,6 +84,6 @@ These decisions should be finalized next and then folded back into this contract
 
 1. exact CCC subset for Phase 1
 2. chosen boot-time address assignment sequence
-3. which motor faults are allowed to raise IBI
-4. whether any touch events justify IBI
+3. which high-rate endpoint faults are allowed to raise IBI
+4. whether any human-interface sensor events justify IBI
 5. concrete latency and polling-period budgets per endpoint class

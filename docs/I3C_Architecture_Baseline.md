@@ -3,11 +3,11 @@
 ## 1. Purpose
 This document consolidates the current project direction into a single baseline for architecture, implementation scope, and repository intent.
 
-The immediate goal is to build a closed-system I3C bus for a custom chipset:
+The immediate goal is to build a closed-system I3C bus for a custom distributed sensor chipset:
 
 - one Hub Controller
-- three motor endpoints
-- three touch endpoints
+- three high-rate control-sensor endpoints
+- three human-interface sensor endpoints
 - scalable to eight total endpoints
 
 The current repository already contains a Phase 0 Spartan-7 SDR starter. This document defines how that starter maps to the larger program.
@@ -15,7 +15,7 @@ The current repository already contains a Phase 0 Spartan-7 SDR starter. This do
 ## 2. Program Decisions Locked In
 
 ### 2.1 System Profile
-- Closed ecosystem only: Hub, Motor, and Touch devices are all project-owned.
+- Closed ecosystem only: the Hub and all endpoint devices are project-owned.
 - Static product topology: no production hot-plug requirement.
 - Steady-state traffic is predominantly read-driven.
 - Primary success criterion is custom-to-custom interoperability and verification, not broad third-party device compatibility.
@@ -71,8 +71,8 @@ Common endpoint responsibilities:
 - reset/error state handling
 
 Device-specific responsibilities:
-- motor telemetry/status register map
-- touch telemetry/event register map
+- high-rate control-sensor telemetry/status register map
+- human-interface sensor telemetry/event register map
 - class-specific fault/event semantics
 
 ## 4. Feature Baseline by Phase
@@ -119,7 +119,7 @@ Required next:
 
 Implication:
 - periodic telemetry should stay scheduler-driven
-- IBI should be reserved for urgent events, especially motor fault conditions
+- IBI should be reserved for urgent events, especially fault or protection conditions from high-rate endpoints
 - verification should include utilization margin checks, not just functional pass/fail
 
 ## 6. Verification Strategy

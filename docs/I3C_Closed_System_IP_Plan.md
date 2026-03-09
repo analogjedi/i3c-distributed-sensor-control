@@ -1,7 +1,7 @@
 # I3C Closed-System IP Plan
 
 ## 1. Goal
-Build a complete, closed chipset where a custom Hub Controller communicates reliably with custom Motor and Touch endpoints over one shared I3C bus, prioritizing **system interoperability verification** over broad third-party interoperability.
+Build a complete, closed chipset where a custom Hub Controller communicates reliably with custom distributed sensor endpoints over one shared I3C bus, prioritizing **system interoperability verification** over broad third-party interoperability.
 
 ## 2. Executive Recommendation
 `chipsalliance/i3c-core` is the best starting point for the Hub-side controller IP.
@@ -17,7 +17,7 @@ What to keep in mind:
 ## 3. Program Constraints (Your Use Case)
 - Closed ecosystem: only your Hub + your endpoints.
 - Static topology by product: no runtime hot-plug requirement.
-- Typical endpoint count: 6 (3 motor ICs + 3 touch ICs), scalable up to 8.
+- Typical endpoint count: 6 (3 high-rate control sensor ICs + 3 human-interface sensor ICs), scalable up to 8.
 - Steady-state traffic is read-dominant (writes mainly at init/config time).
 - Interop priority: custom-to-custom compatibility first, external vendor compatibility second.
 
@@ -42,10 +42,10 @@ Planning implication:
 - Implement a thin product-specific wrapper:
   - Boot sequencing.
   - Static endpoint inventory and policy.
-  - Periodic polling scheduler for motor/touch telemetry.
+  - Periodic polling scheduler for distributed sensor telemetry.
   - Optional IBI service path.
 
-## 5.2 Endpoint Target IP (Motor + Touch)
+## 5.2 Endpoint Target IP (Distributed Sensor Targets)
 For endpoint RTL, use a lightweight target architecture focused on:
 - SDR target transactions.
 - Address assignment participation (`ENTDAA`, and optionally static-assisted flows).
@@ -74,7 +74,7 @@ Reference options:
 ## 6.2 Enabled but Policy-Limited
 - Hot-Join capability can exist in logic but be disabled by policy after boot (`DISEC/ENEC` policy gating).
 - IBI support can be enabled selectively:
-  - Motor faults/critical events: enable.
+- Critical fault/protection events from high-rate endpoints: enable.
   - High-rate periodic data: prefer scheduled reads unless latency needs dictate IBI.
 
 ## 6.3 Defer to Later Phases (Unless Proven Necessary)
@@ -85,7 +85,7 @@ Reference options:
 - Legacy I2C coexistence (if product bus is pure I3C endpoints).
 
 ## 7. Compatibility Contract (Key Deliverable)
-Create a project-owned `I3C Compatibility Contract` document defining exactly what "works" means across Hub/Motor/Touch devices.
+Create a project-owned `I3C Compatibility Contract` document defining exactly what "works" means across the Hub and distributed sensor endpoints.
 
 Required sections:
 - Supported commands and exact response behavior.
@@ -145,7 +145,7 @@ Deliverables:
 
 ## Phase B: Hub + Endpoint RTL Adaptation (4-8 weeks)
 - Build Hub wrapper and scheduler.
-- Implement endpoint target profile logic for motor and touch classes.
+- Implement endpoint target profile logic for the two sensor endpoint classes.
 - Add reset/error policy implementation hooks.
 
 Deliverables:
@@ -184,4 +184,3 @@ Deliverables:
 2. Fork and baseline the controller IP candidate in your internal repo.
 3. Write compatibility contract v0.1 before broad RTL edits.
 4. Stand up an automated regression harness for 6-target topology first, then 8-target.
-

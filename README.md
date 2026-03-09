@@ -3,7 +3,7 @@
 This repository now serves two purposes:
 
 1. a practical Spartan-7 SDR bring-up baseline
-2. the seed repository for a larger closed-system I3C Hub/Motor/Touch architecture
+2. the seed repository for a larger closed-system I3C distributed sensor architecture
 
 Current code and planning artifacts:
 
