@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>I3C Sensor Hub Worksheet</title>
+  <style>
+    :root {
+      --bg-top: #ffe9cc;
+      --bg-bottom: #f4f8ff;
+      --ink: #1d2230;
+      --muted: #515a70;
+      --line: #ccd3e2;
+      --panel: #ffffff;
+      --accent: #0c5f88;
+      --accent-soft: #d8ecf6;
+      --ok: #147c44;
+      --warn: #986300;
+      --alert: #ad2e2e;
+      --chip: #eff2f8;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Avenir Next", "Trebuchet MS", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 0% 0%, #fff7e8 0, #fff7e8 18%, transparent 40%),
+        radial-gradient(circle at 100% 10%, #eaf4ff 0, #eaf4ff 16%, transparent 42%),
+        linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .shell {
+      max-width: 1220px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+
+    .hero {
+      background: linear-gradient(115deg, #0d3b56, #14507b 55%, #225e73);
+      color: #fff;
+      border-radius: 16px;
+      padding: 18px 20px;
+      box-shadow: 0 12px 24px rgba(17, 32, 52, 0.22);
+    }
+
+    .hero h1 {
+      margin: 0 0 6px 0;
+      font-size: clamp(1.2rem, 2.2vw, 1.8rem);
+      letter-spacing: 0.02em;
+    }
+
+    .hero p {
+      margin: 0;
+      color: #d7e9ff;
+      font-size: 0.95rem;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+      grid-template-columns: 1.1fr 0.9fr;
+      align-items: start;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid #e3e9f4;
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 10px 18px rgba(16, 31, 49, 0.07);
+    }
+
+    .panel h2 {
+      margin: 0 0 10px 0;
+      font-size: 1rem;
+      letter-spacing: 0.02em;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 4px;
+    }
+
+    .field label {
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 600;
+    }
+
+    .field .hint {
+      color: #6a7388;
+      font-size: 0.74rem;
+      line-height: 1.25;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      min-height: 34px;
+      padding: 6px 8px;
+      font-size: 0.92rem;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    input:focus,
+    select:focus {
+      outline: 2px solid #9ac7de;
+      border-color: #6ba0bc;
+    }
+
+    .row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+
+    button,
+    .btn-file {
+      border: 1px solid #2f647f;
+      background: #f4fbff;
+      color: #124764;
+      border-radius: 9px;
+      min-height: 34px;
+      padding: 0 11px;
+      font-size: 0.84rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: 130ms ease;
+    }
+
+    button:hover,
+    .btn-file:hover {
+      transform: translateY(-1px);
+      background: #e5f4fd;
+    }
+
+    .btn-file input {
+      display: none;
+    }
+
+    .topology-wrap {
+      margin-top: 8px;
+      background: #f8fbff;
+      border: 1px dashed #c7d5ea;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .bus {
+      display: grid;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .hub {
+      justify-self: center;
+      border-radius: 12px;
+      background: linear-gradient(130deg, #15374f, #1e5a7a);
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      padding: 10px 14px;
+      min-width: 170px;
+      text-align: center;
+    }
+
+    .line {
+      height: 4px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #2d4f72, #5f90a9);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .line::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.4) 0,
+        rgba(255, 255, 255, 0.4) 10px,
+        transparent 10px,
+        transparent 16px
+      );
+      animation: flow 1.2s linear infinite;
+    }
+
+    @keyframes flow {
+      from { transform: translateX(0); }
+      to { transform: translateX(16px); }
+    }
+
+    .targets {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    }
+
+    .target-pill {
+      border: 1px solid #bfd0e7;
+      background: #ffffff;
+      border-radius: 10px;
+      text-align: center;
+      padding: 7px 4px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: #26435e;
+    }
+
+    .kpis {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .kpi {
+      background: #fbfdff;
+      border: 1px solid #d7e1ef;
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .kpi .label {
+      color: #5c6578;
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .kpi .value {
+      margin-top: 4px;
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .meter {
+      margin-top: 8px;
+      background: #e8eef8;
+      border-radius: 999px;
+      overflow: hidden;
+      height: 13px;
+    }
+
+    .meter > div {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #178147, #7db743);
+      transition: width 150ms ease, background 150ms ease;
+    }
+
+    .target-table-wrap {
+      overflow-x: auto;
+      border: 1px solid #dbe4f1;
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 850px;
+      font-size: 0.84rem;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid #ebf0f7;
+      padding: 8px 6px;
+      vertical-align: middle;
+      text-align: left;
+    }
+
+    th {
+      font-size: 0.74rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #596279;
+      background: #f8fbff;
+    }
+
+    td input[type="number"],
+    td input[type="text"] {
+      min-height: 30px;
+      font-size: 0.82rem;
+      padding: 5px 6px;
+    }
+
+    .status-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .status {
+      border: 1px solid #d7e1ef;
+      border-radius: 10px;
+      padding: 9px;
+      background: #fcfdff;
+      display: grid;
+      gap: 3px;
+    }
+
+    .status-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 0.88rem;
+    }
+
+    .chip {
+      font-size: 0.72rem;
+      border-radius: 999px;
+      padding: 2px 8px;
+      border: 1px solid #d0dae9;
+      background: var(--chip);
+    }
+
+    .chip.use {
+      color: var(--ok);
+      border-color: #bde1ce;
+      background: #eef9f3;
+    }
+
+    .chip.optional {
+      color: var(--warn);
+      border-color: #ecdcb2;
+      background: #fff8e8;
+    }
+
+    .chip.skip {
+      color: #667188;
+      border-color: #dde3ee;
+      background: #f5f7fb;
+    }
+
+    .status small {
+      color: #596279;
+      line-height: 1.35;
+    }
+
+    .foot {
+      color: #5b6479;
+      font-size: 0.78rem;
+      background: #f7fbff;
+      border: 1px dashed #cbdaef;
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    @media (max-width: 980px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .controls {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>I3C Sensor Hub Worksheet (Fixed Endpoint Planning)</h1>
+      <p>Model a static 1-8 target bus, estimate utilization, and map which I3C features fit this architecture.</p>
+    </section>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Bus Setup</h2>
+        <div class="controls">
+          <div class="field">
+            <label for="appName">Application Name</label>
+            <input id="appName" type="text" value="Platform A" />
+          </div>
+          <div class="field">
+            <label for="targetCount">Fixed Target Count (1-8)</label>
+            <input id="targetCount" type="number" min="1" max="8" step="1" value="4" />
+          </div>
+          <div class="field">
+            <label for="busRate">Effective I3C SDR Throughput (Mb/s, not MHz)</label>
+            <input id="busRate" type="number" min="0.1" max="12.5" step="0.1" value="8" />
+            <small class="hint">Single-lane SDR effective range is typically below 12.5 Mb/s.</small>
+          </div>
+          <div class="field">
+            <label for="margin">Reserved Headroom (%)</label>
+            <input id="margin" type="number" min="0" max="90" step="1" value="30" />
+          </div>
+          <div class="field">
+            <label for="readOverhead">Read Transaction Overhead (bytes)</label>
+            <input id="readOverhead" type="number" min="0" step="1" value="5" />
+          </div>
+          <div class="field">
+            <label for="writeOverhead">Write Transaction Overhead (bytes)</label>
+            <input id="writeOverhead" type="number" min="0" step="1" value="4" />
+          </div>
+          <div class="field">
+            <label for="ibiOverhead">IBI Transaction Overhead (bytes)</label>
+            <input id="ibiOverhead" type="number" min="0" step="1" value="3" />
+          </div>
+          <div class="field">
+            <label for="i2cMix">Legacy I2C Devices on This Bus</label>
+            <select id="i2cMix">
+              <option value="no" selected>No</option>
+              <option value="yes">Yes</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <button id="btnDefaults" type="button">Reset Defaults</button>
+          <button id="btnExport" type="button">Export JSON</button>
+          <label class="btn-file" for="importFile">Import JSON<input id="importFile" type="file" accept="application/json" /></label>
+        </div>
+
+        <div class="topology-wrap">
+          <h2>Shared Bus Topology</h2>
+          <div id="topology" class="bus"></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Capacity Snapshot</h2>
+        <div class="kpis">
+          <div class="kpi">
+            <div class="label">Aggregate Traffic</div>
+            <div class="value" id="kpiTraffic">0.00 Mbps</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Bus Utilization</div>
+            <div class="value" id="kpiUtil">0.0%</div>
+            <div class="meter"><div id="utilBar"></div></div>
+          </div>
+          <div class="kpi">
+            <div class="label">Planned Ceiling (100 - margin)</div>
+            <div class="value" id="kpiCeiling">70.0%</div>
+          </div>
+          <div class="kpi">
+            <div class="label">Headroom vs Ceiling</div>
+            <div class="value" id="kpiHeadroom">+70.0%</div>
+          </div>
+        </div>
+
+        <h2 style="margin-top: 14px;">Feature Alignment</h2>
+        <div id="featureList" class="status-list"></div>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Per-Target Traffic Model</h2>
+      <div class="target-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Use</th>
+              <th>Target</th>
+              <th>Read Rate (Hz)</th>
+              <th>Read Payload (B)</th>
+              <th>Write Rate (Hz)</th>
+              <th>Write Payload (B)</th>
+              <th>IBI Rate (Hz)</th>
+              <th>IBI Payload (B)</th>
+              <th>Traffic (kbps)</th>
+            </tr>
+          </thead>
+          <tbody id="targetsBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="foot">
+      Model assumptions: endpoints are fixed per application (no hot plug), SDR throughput is entered as an effective value, and each transaction adds configurable byte overhead. For high-confidence planning, keep utilization below your reserved ceiling and validate with measured firmware traffic traces.
+    </section>
+  </main>
+
+  <script>
+    const maxTargets = 8;
+    const maxSdrEffectiveMbps = 12.5;
+    const defaultTargets = Array.from({ length: maxTargets }, (_, i) => ({
+      enabled: i < 4,
+      name: `T${i + 1}`,
+      readHz: i < 4 ? 200 : 0,
+      readBytes: i < 4 ? 12 : 0,
+      writeHz: i < 4 ? 5 : 0,
+      writeBytes: i < 4 ? 4 : 0,
+      ibiHz: i === 0 ? 25 : 0,
+      ibiBytes: i === 0 ? 2 : 0
+    }));
+
+    const model = {
+      appName: "Platform A",
+      targetCount: 4,
+      busRate: 8,
+      margin: 30,
+      readOverhead: 5,
+      writeOverhead: 4,
+      ibiOverhead: 3,
+      i2cMix: "no",
+      targets: structuredClone(defaultTargets)
+    };
+
+    const refs = {
+      appName: document.getElementById("appName"),
+      targetCount: document.getElementById("targetCount"),
+      busRate: document.getElementById("busRate"),
+      margin: document.getElementById("margin"),
+      readOverhead: document.getElementById("readOverhead"),
+      writeOverhead: document.getElementById("writeOverhead"),
+      ibiOverhead: document.getElementById("ibiOverhead"),
+      i2cMix: document.getElementById("i2cMix"),
+      topology: document.getElementById("topology"),
+      targetsBody: document.getElementById("targetsBody"),
+      kpiTraffic: document.getElementById("kpiTraffic"),
+      kpiUtil: document.getElementById("kpiUtil"),
+      kpiCeiling: document.getElementById("kpiCeiling"),
+      kpiHeadroom: document.getElementById("kpiHeadroom"),
+      utilBar: document.getElementById("utilBar"),
+      featureList: document.getElementById("featureList"),
+      importFile: document.getElementById("importFile"),
+      btnDefaults: document.getElementById("btnDefaults"),
+      btnExport: document.getElementById("btnExport")
+    };
+    let renderedTargetCount = model.targetCount;
+
+    function clamp(num, min, max) {
+      return Math.min(max, Math.max(min, num));
+    }
+
+    function numberOr(input, fallback) {
+      const n = Number.parseFloat(input);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function syncModelFromControls() {
+      model.appName = refs.appName.value || "Unnamed App";
+      model.targetCount = clamp(Math.round(numberOr(refs.targetCount.value, 1)), 1, maxTargets);
+      refs.targetCount.value = String(model.targetCount);
+
+      model.busRate = clamp(numberOr(refs.busRate.value, 8), 0.1, maxSdrEffectiveMbps);
+      refs.busRate.value = String(model.busRate);
+      model.margin = clamp(numberOr(refs.margin.value, 30), 0, 90);
+      model.readOverhead = Math.max(0, numberOr(refs.readOverhead.value, 5));
+      model.writeOverhead = Math.max(0, numberOr(refs.writeOverhead.value, 4));
+      model.ibiOverhead = Math.max(0, numberOr(refs.ibiOverhead.value, 3));
+      model.i2cMix = refs.i2cMix.value === "yes" ? "yes" : "no";
+
+      for (let i = 0; i < maxTargets; i += 1) {
+        const active = i < model.targetCount;
+        if (!active) {
+          model.targets[i].enabled = false;
+        } else if (model.targets[i].enabled === false && i === 0) {
+          model.targets[i].enabled = true;
+        }
+      }
+    }
+
+    function renderTopology() {
+      const nodes = model.targets.slice(0, model.targetCount);
+      const pills = nodes.map((t, i) => {
+        const suffix = t.enabled ? "" : " (off)";
+        return `<div class="target-pill">${escapeHtml(t.name || `T${i + 1}`)}${suffix}</div>`;
+      }).join("");
+
+      refs.topology.innerHTML = `
+        <div class="hub">${escapeHtml(model.appName || "Sensor Hub")}<br />I3C Controller</div>
+        <div class="line" aria-hidden="true"></div>
+        <div class="targets">${pills}</div>
+      `;
+    }
+
+    function buildTargetRow(i) {
+      const t = model.targets[i];
+      const disabled = i >= model.targetCount;
+      const lock = disabled ? "disabled" : "";
+      const rowStyle = disabled ? " style='opacity:0.55'" : "";
+      return `
+      <tr data-i="${i}"${rowStyle}>
+        <td><input type="checkbox" data-key="enabled" ${t.enabled ? "checked" : ""} ${lock}></td>
+        <td><input type="text" data-key="name" value="${escapeHtml(t.name)}" ${lock}></td>
+        <td><input type="number" data-key="readHz" min="0" step="1" value="${t.readHz}" ${lock}></td>
+        <td><input type="number" data-key="readBytes" min="0" step="1" value="${t.readBytes}" ${lock}></td>
+        <td><input type="number" data-key="writeHz" min="0" step="1" value="${t.writeHz}" ${lock}></td>
+        <td><input type="number" data-key="writeBytes" min="0" step="1" value="${t.writeBytes}" ${lock}></td>
+        <td><input type="number" data-key="ibiHz" min="0" step="1" value="${t.ibiHz}" ${lock}></td>
+        <td><input type="number" data-key="ibiBytes" min="0" step="1" value="${t.ibiBytes}" ${lock}></td>
+        <td data-kpi="rowKbps">0.0</td>
+      </tr>
+      `;
+    }
+
+    function renderTargetRows() {
+      refs.targetsBody.innerHTML = Array.from({ length: maxTargets }, (_, i) => buildTargetRow(i)).join("");
+      refs.targetsBody.querySelectorAll("input").forEach((input) => {
+        input.addEventListener("input", onTableInput);
+        input.addEventListener("change", onTableInput);
+      });
+    }
+
+    function onTableInput(event) {
+      const tr = event.target.closest("tr");
+      const i = Number(tr.dataset.i);
+      const key = event.target.dataset.key;
+      if (!Number.isInteger(i) || !key) {
+        return;
+      }
+
+      if (key === "enabled") {
+        model.targets[i].enabled = Boolean(event.target.checked);
+      } else if (key === "name") {
+        model.targets[i].name = event.target.value || `T${i + 1}`;
+      } else {
+        model.targets[i][key] = Math.max(0, numberOr(event.target.value, 0));
+      }
+
+      refresh();
+    }
+
+    function computeTargetBitsPerSec(t) {
+      if (!t.enabled) {
+        return 0;
+      }
+      const readBps = t.readHz * (t.readBytes + model.readOverhead);
+      const writeBps = t.writeHz * (t.writeBytes + model.writeOverhead);
+      const ibiBps = t.ibiHz * (t.ibiBytes + model.ibiOverhead);
+      return (readBps + writeBps + ibiBps) * 8;
+    }
+
+    function renderRowKpis(bitsList) {
+      refs.targetsBody.querySelectorAll("tr").forEach((tr, i) => {
+        const cell = tr.querySelector("[data-kpi='rowKbps']");
+        if (!cell) {
+          return;
+        }
+        const kbps = (bitsList[i] || 0) / 1000;
+        cell.textContent = kbps.toFixed(1);
+      });
+    }
+
+    function featureRows(util, ceiling, anyIbi) {
+      const list = [];
+      list.push({
+        name: "Dynamic Address Assignment (ENTDAA) at startup",
+        status: "use",
+        reason: "Use once during boot so each fixed target receives a deterministic runtime address map."
+      });
+      list.push({
+        name: "Common Command Codes (CCC) for discovery/control",
+        status: "use",
+        reason: "Core bus-management path for capability discovery, event control, reset behavior, and policy setup."
+      });
+      list.push({
+        name: "Hot-Join",
+        status: "skip",
+        reason: "Skip for this profile because endpoint count is static per application and no runtime plugging is expected."
+      });
+      list.push({
+        name: "In-Band Interrupts (IBI)",
+        status: anyIbi ? "use" : "optional",
+        reason: anyIbi
+          ? "Keep enabled for event-driven sensors to cut polling overhead and latency."
+          : "Optional if all sensors are strictly polled and no asynchronous events are required."
+      });
+      list.push({
+        name: "SETMRL / SETMWL limits",
+        status: (model.targetCount >= 4 || util > 0.4) ? "use" : "optional",
+        reason: "Helps prevent one target from monopolizing the bus as endpoint count or bandwidth demand grows."
+      });
+      list.push({
+        name: "Group addressing",
+        status: model.targetCount >= 5 ? "use" : "optional",
+        reason: "Useful for synchronized configuration writes across multiple related sensors."
+      });
+      list.push({
+        name: "HDR or multi-lane migration",
+        status: util > ceiling || util > 0.75 ? "use" : (util > 0.55 ? "optional" : "skip"),
+        reason: util > ceiling || util > 0.75
+          ? "Traffic is near/above planning limits; consider HDR, split buses, or lower ODR/payload."
+          : (util > 0.55
+            ? "Keep as next-step option if future firmware increases aggregate sensor rates."
+            : "Not needed for current throughput profile in SDR.")
+      });
+      list.push({
+        name: "Legacy I2C coexistence mode",
+        status: model.i2cMix === "yes" ? "use" : "skip",
+        reason: model.i2cMix === "yes"
+          ? "Enable mixed-bus policy/timing only if legacy I2C targets share this exact bus."
+          : "Skip mixed-bus complexity when all endpoints are native I3C targets."
+      });
+      return list;
+    }
+
+    function renderFeatureList(util, ceiling, anyIbi) {
+      const rows = featureRows(util, ceiling, anyIbi);
+      refs.featureList.innerHTML = rows.map((f) => `
+        <article class="status">
+          <div class="status-top">
+            <span>${f.name}</span>
+            <span class="chip ${f.status}">${f.status.toUpperCase()}</span>
+          </div>
+          <small>${f.reason}</small>
+        </article>
+      `).join("");
+    }
+
+    function refresh() {
+      syncModelFromControls();
+      if (renderedTargetCount !== model.targetCount) {
+        renderedTargetCount = model.targetCount;
+        renderTargetRows();
+      }
+      renderTopology();
+
+      const bitsList = model.targets.map((t, i) => {
+        if (i >= model.targetCount) {
+          return 0;
+        }
+        return computeTargetBitsPerSec(t);
+      });
+      renderRowKpis(bitsList);
+
+      const aggregateBps = bitsList.reduce((sum, bps) => sum + bps, 0);
+      const busBps = model.busRate * 1_000_000;
+      const util = busBps > 0 ? aggregateBps / busBps : 0;
+      const trafficMbps = aggregateBps / 1_000_000;
+      const ceiling = (100 - model.margin) / 100;
+      const headroom = (ceiling - util) * 100;
+      const anyIbi = model.targets.slice(0, model.targetCount).some((t) => t.enabled && t.ibiHz > 0);
+
+      refs.kpiTraffic.textContent = `${trafficMbps.toFixed(3)} Mbps`;
+      refs.kpiUtil.textContent = `${(util * 100).toFixed(1)}%`;
+      refs.kpiCeiling.textContent = `${(ceiling * 100).toFixed(1)}%`;
+      refs.kpiHeadroom.textContent = `${headroom >= 0 ? "+" : ""}${headroom.toFixed(1)}%`;
+
+      const barPct = clamp(util * 100, 0, 200);
+      refs.utilBar.style.width = `${barPct}%`;
+      if (util <= ceiling * 0.85) {
+        refs.utilBar.style.background = "linear-gradient(90deg, #178147, #7db743)";
+      } else if (util <= ceiling) {
+        refs.utilBar.style.background = "linear-gradient(90deg, #ad7f12, #d1ab2f)";
+      } else {
+        refs.utilBar.style.background = "linear-gradient(90deg, #c23830, #e67141)";
+      }
+
+      renderFeatureList(util, ceiling, anyIbi);
+    }
+
+    function resetDefaults() {
+      model.appName = "Platform A";
+      model.targetCount = 4;
+      model.busRate = 8;
+      model.margin = 30;
+      model.readOverhead = 5;
+      model.writeOverhead = 4;
+      model.ibiOverhead = 3;
+      model.i2cMix = "no";
+      model.targets = structuredClone(defaultTargets);
+      renderedTargetCount = model.targetCount;
+
+      refs.appName.value = model.appName;
+      refs.targetCount.value = model.targetCount;
+      refs.busRate.value = model.busRate;
+      refs.margin.value = model.margin;
+      refs.readOverhead.value = model.readOverhead;
+      refs.writeOverhead.value = model.writeOverhead;
+      refs.ibiOverhead.value = model.ibiOverhead;
+      refs.i2cMix.value = model.i2cMix;
+
+      renderTargetRows();
+      refresh();
+    }
+
+    function exportJson() {
+      const payload = {
+        version: 1,
+        savedAt: new Date().toISOString(),
+        model
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${(model.appName || "i3c_plan").replace(/\s+/g, "_").toLowerCase()}_i3c_worksheet.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importJson(file) {
+      if (!file) {
+        return;
+      }
+      try {
+        const text = await file.text();
+        const parsed = JSON.parse(text);
+        const incoming = parsed.model ? parsed.model : parsed;
+
+        model.appName = typeof incoming.appName === "string" ? incoming.appName : model.appName;
+        model.targetCount = clamp(Math.round(numberOr(incoming.targetCount, model.targetCount)), 1, maxTargets);
+        model.busRate = clamp(numberOr(incoming.busRate, model.busRate), 0.1, maxSdrEffectiveMbps);
+        model.margin = clamp(numberOr(incoming.margin, model.margin), 0, 90);
+        model.readOverhead = Math.max(0, numberOr(incoming.readOverhead, model.readOverhead));
+        model.writeOverhead = Math.max(0, numberOr(incoming.writeOverhead, model.writeOverhead));
+        model.ibiOverhead = Math.max(0, numberOr(incoming.ibiOverhead, model.ibiOverhead));
+        model.i2cMix = incoming.i2cMix === "yes" ? "yes" : "no";
+        renderedTargetCount = model.targetCount;
+
+        if (Array.isArray(incoming.targets)) {
+          for (let i = 0; i < maxTargets; i += 1) {
+            const src = incoming.targets[i] || {};
+            model.targets[i] = {
+              enabled: Boolean(src.enabled),
+              name: typeof src.name === "string" ? src.name : `T${i + 1}`,
+              readHz: Math.max(0, numberOr(src.readHz, 0)),
+              readBytes: Math.max(0, numberOr(src.readBytes, 0)),
+              writeHz: Math.max(0, numberOr(src.writeHz, 0)),
+              writeBytes: Math.max(0, numberOr(src.writeBytes, 0)),
+              ibiHz: Math.max(0, numberOr(src.ibiHz, 0)),
+              ibiBytes: Math.max(0, numberOr(src.ibiBytes, 0))
+            };
+          }
+        }
+
+        refs.appName.value = model.appName;
+        refs.targetCount.value = model.targetCount;
+        refs.busRate.value = model.busRate;
+        refs.margin.value = model.margin;
+        refs.readOverhead.value = model.readOverhead;
+        refs.writeOverhead.value = model.writeOverhead;
+        refs.ibiOverhead.value = model.ibiOverhead;
+        refs.i2cMix.value = model.i2cMix;
+
+        renderTargetRows();
+        refresh();
+      } catch (error) {
+        alert("Import failed: invalid JSON format.");
+      } finally {
+        refs.importFile.value = "";
+      }
+    }
+
+    [
+      refs.appName,
+      refs.targetCount,
+      refs.busRate,
+      refs.margin,
+      refs.readOverhead,
+      refs.writeOverhead,
+      refs.ibiOverhead,
+      refs.i2cMix
+    ].forEach((el) => {
+      el.addEventListener("input", refresh);
+      el.addEventListener("change", refresh);
+    });
+
+    refs.btnDefaults.addEventListener("click", resetDefaults);
+    refs.btnExport.addEventListener("click", exportJson);
+    refs.importFile.addEventListener("change", (event) => importJson(event.target.files[0]));
+
+    renderTargetRows();
+    refresh();
+  </script>
+</body>
+</html>

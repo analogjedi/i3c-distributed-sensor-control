@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "savedAt": "2026-02-21T18:40:22.321Z",
+  "model": {
+    "appName": "Platform A",
+    "targetCount": 6,
+    "busRate": 8,
+    "margin": 30,
+    "readOverhead": 5,
+    "writeOverhead": 4,
+    "ibiOverhead": 3,
+    "i2cMix": "no",
+    "targets": [
+      {
+        "enabled": true,
+        "name": "T1",
+        "readHz": 10000,
+        "readBytes": 12,
+        "writeHz": 0,
+        "writeBytes": 0,
+        "ibiHz": 25,
+        "ibiBytes": 2
+      },
+      {
+        "enabled": true,
+        "name": "T2",
+        "readHz": 10000,
+        "readBytes": 12,
+        "writeHz": 0,
+        "writeBytes": 0,
+        "ibiHz": 0,
+        "ibiBytes": 0
+      },
+      {
+        "enabled": true,
+        "name": "T3",
+        "readHz": 10000,
+        "readBytes": 12,
+        "writeHz": 0,
+        "writeBytes": 0,
+        "ibiHz": 0,
+        "ibiBytes": 0
+      },
+      {
+        "enabled": true,
+        "name": "T4",
+        "readHz": 2200,
+        "readBytes": 12,
+        "writeHz": 0,
+        "writeBytes": 0,
+        "ibiHz": 0,
+        "ibiBytes": 0
+      },
+      {
+        "enabled": true,
+        "name": "T5",
+        "readHz": 2200,
+        "readBytes": 12,
+        "writeHz": 0,
+        "writeBytes": 0,
+        "ibiHz": 0,
+        "ibiBytes": 0
+      },
+      {
+        "enabled": true,
+        "name": "T6",
+        "readHz": 2200,
+        "readBytes": 12,
+        "writeHz": 0,
+        "writeBytes": 0,
+        "ibiHz": 0,
+        "ibiBytes": 0
+      },
+      {
+        "enabled": false,
+        "name": "T7",
+        "readHz": 0,
+        "readBytes": 0,
+        "writeHz": 0,
+        "writeBytes": 0,
+        "ibiHz": 0,
+        "ibiBytes": 0
+      },
+      {
+        "enabled": false,
+        "name": "T8",
+        "readHz": 0,
+        "readBytes": 0,
+        "writeHz": 0,
+        "writeBytes": 0,
+        "ibiHz": 0,
+        "ibiBytes": 0
+      }
+    ]
+  }
+}

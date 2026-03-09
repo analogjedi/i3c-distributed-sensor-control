@@ -1,0 +1,19 @@
+.DS_Store
+
+# Local simulation outputs
+simv_*
+*.vcd
+
+# Local scratch and rendered artifacts
+tmp/
+
+# Common Vivado-generated project outputs
+.Xil/
+*.jou
+*.log
+*.str
+*.cache/
+*.hw/
+*.ip_user_files/
+*.runs/
+*.sim/
