@@ -3,6 +3,7 @@ RTL_SRCS := \
 	rtl/i3c_ctrl_ccc.v \
 	rtl/i3c_ctrl_daa.v \
 	rtl/i3c_ctrl_direct_ccc.v \
+	rtl/i3c_ctrl_entdaa.v \
 	rtl/i3c_ctrl_txn_layer.v \
 	rtl/i3c_sdr_controller.v \
 	rtl/i3c_target_ccc.v \
@@ -22,12 +23,14 @@ SIM_CCC_OUT := simv_ccc
 SIM_DIRECT_CCC_WRITE_OUT := simv_direct_ccc_write
 SIM_DIRECT_CCC_READ_OUT := simv_direct_ccc_read
 SIM_SETDASA_OUT := simv_setdasa
+SIM_GETPID_OUT := simv_getpid
+SIM_ENTDAA_OUT := simv_entdaa
 
-.PHONY: sim sim-rw sim-nack sim-target sim-daa sim-ccc sim-direct-ccc-write sim-direct-ccc-read sim-setdasa test clean
+.PHONY: sim sim-rw sim-nack sim-target sim-daa sim-ccc sim-direct-ccc-write sim-direct-ccc-read sim-setdasa sim-getpid sim-entdaa test clean
 
 sim: test
 
-test: sim-rw sim-nack sim-target sim-daa sim-ccc sim-direct-ccc-write sim-direct-ccc-read sim-setdasa
+test: sim-rw sim-nack sim-target sim-daa sim-ccc sim-direct-ccc-write sim-direct-ccc-read sim-setdasa sim-getpid sim-entdaa
 
 sim-rw:
 	iverilog -g2012 -Wall -o $(SIM_RW_OUT) $(RTL_SRCS) $(COMMON_TB_SRCS) tb/tb_i3c_sdr_controller.v
@@ -61,5 +64,13 @@ sim-setdasa:
 	iverilog -g2012 -Wall -o $(SIM_SETDASA_OUT) $(RTL_SRCS) tb/tb_i3c_setdasa.v
 	vvp $(SIM_SETDASA_OUT)
 
+sim-getpid:
+	iverilog -g2012 -Wall -o $(SIM_GETPID_OUT) $(RTL_SRCS) tb/tb_i3c_getpid.v
+	vvp $(SIM_GETPID_OUT)
+
+sim-entdaa:
+	iverilog -g2012 -Wall -o $(SIM_ENTDAA_OUT) $(RTL_SRCS) tb/tb_i3c_entdaa.v
+	vvp $(SIM_ENTDAA_OUT)
+
 clean:
-	rm -f $(SIM_RW_OUT) $(SIM_NACK_OUT) $(SIM_TARGET_OUT) $(SIM_DAA_OUT) $(SIM_CCC_OUT) $(SIM_DIRECT_CCC_WRITE_OUT) $(SIM_DIRECT_CCC_READ_OUT) $(SIM_SETDASA_OUT) tb_i3c_sdr_controller.vcd tb_i3c_sdr_nack.vcd tb_i3c_target_transport.vcd tb_i3c_broadcast_ccc.vcd tb_i3c_direct_ccc_write.vcd tb_i3c_direct_ccc_read.vcd tb_i3c_setdasa.vcd
+	rm -f $(SIM_RW_OUT) $(SIM_NACK_OUT) $(SIM_TARGET_OUT) $(SIM_DAA_OUT) $(SIM_CCC_OUT) $(SIM_DIRECT_CCC_WRITE_OUT) $(SIM_DIRECT_CCC_READ_OUT) $(SIM_SETDASA_OUT) $(SIM_GETPID_OUT) $(SIM_ENTDAA_OUT) tb_i3c_sdr_controller.vcd tb_i3c_sdr_nack.vcd tb_i3c_target_transport.vcd tb_i3c_broadcast_ccc.vcd tb_i3c_direct_ccc_write.vcd tb_i3c_direct_ccc_read.vcd tb_i3c_setdasa.vcd tb_i3c_getpid.vcd tb_i3c_entdaa.vcd

@@ -2,7 +2,7 @@
 
 module tb_i3c_broadcast_ccc;
 
-    localparam [7:0] CCC_RSTDAA  = 8'h07;
+    localparam [7:0] CCC_RSTDAA  = 8'h06;
     localparam [7:0] CCC_SETAASA = 8'h2A;
 
     reg clk;

@@ -41,11 +41,14 @@ Implemented and regression-backed:
   - direct read transactions
 - target-side direct CCC decode/response for:
   - `SETDASA`
+  - `GETPID`
+- single-target `ENTDAA` controller/target baseline with:
+  - PID/BCR/DCR capture
+  - controller-side DAA address assignment
 
 Not yet implemented:
 
-- `GETPID`
-- bus-modal `ENTDAA`
+- multi-target `ENTDAA`
 - broader target-side direct CCC decode/response path
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
@@ -243,7 +246,9 @@ Current status:
 - target address-state reset via `RSTDAA` is implemented
 - controller-side direct CCC framing is implemented and regression-backed
 - target-side `SETDASA` is implemented and regression-backed
-- `GETPID` and `ENTDAA` remain outstanding
+- target-side `GETPID` is implemented and regression-backed
+- a first real single-target `ENTDAA` controller/target regression is implemented
+- multi-target `ENTDAA` remains outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -266,8 +271,8 @@ Current status:
 - broadcast CCC issue/decode path is implemented
 - supported CCCs today are `RSTDAA` and `SETAASA`
 - controller-side direct CCC framing is implemented in a standalone sequencer
-- target-side direct CCC decode now supports `SETDASA`
-- `GETPID` remains the next direct CCC milestone
+- target-side direct CCC decode now supports `SETDASA` and `GETPID`
+- the next CCC milestone is broader direct/broadcast coverage beyond the addressing baseline
 
 Minimum CCC set to lock before coding:
 - addressing support needed for chosen boot flow
@@ -277,8 +282,8 @@ Minimum CCC set to lock before coding:
 
 Recommended near-term CCC order:
 
-1. `GETPID`
-2. any additional direct CCCs needed by the boot/profile contract
+1. any additional direct CCCs needed by the boot/profile contract
+2. any broadcast CCCs needed before broader recovery/policy work
 3. any event-control CCCs needed before IBI work
 4. reset-policy CCCs beyond `RSTDAA`
 
@@ -415,7 +420,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. implement and verify `GETPID`
-2. expand target-side direct CCC decode/response beyond `SETDASA`
-3. build the first real `ENTDAA` modal-flow controller/target regression
+1. expand `ENTDAA` from single-target baseline to multi-target regression coverage
+2. expand target-side direct CCC decode/response beyond `SETDASA` and `GETPID`
+3. add controller inventory/policy hooks for BCR/DCR alongside PID capture
 4. only then expand into reset-policy CCCs and IBI control

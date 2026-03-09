@@ -28,13 +28,18 @@ module i3c_target_top #(
     wire ccc_setaasa_pulse;
     wire ccc_setdasa_valid;
     wire [6:0] ccc_setdasa_addr;
+    wire ccc_entdaa_assign_valid;
+    wire [6:0] ccc_entdaa_assign_addr;
     wire ccc_transport_holdoff;
     wire ccc_seen;
     wire target_assign_dynamic_addr_valid;
     wire [6:0] target_assign_dynamic_addr;
 
-    assign target_assign_dynamic_addr_valid = assign_dynamic_addr_valid | ccc_setdasa_valid;
-    assign target_assign_dynamic_addr = ccc_setdasa_valid ? ccc_setdasa_addr : assign_dynamic_addr;
+    assign target_assign_dynamic_addr_valid = assign_dynamic_addr_valid |
+                                              ccc_setdasa_valid |
+                                              ccc_entdaa_assign_valid;
+    assign target_assign_dynamic_addr = ccc_entdaa_assign_valid ? ccc_entdaa_assign_addr :
+                                        (ccc_setdasa_valid ? ccc_setdasa_addr : assign_dynamic_addr);
 
     i3c_target_daa #(
         .STATIC_ADDR(STATIC_ADDR),
@@ -71,10 +76,14 @@ module i3c_target_top #(
         .scl              (scl),
         .sda              (sda),
         .active_addr      (active_addr),
+        .dynamic_addr_valid(dynamic_addr_valid),
+        .provisional_id   (provisional_id),
         .rstdaa_pulse     (ccc_rstdaa_pulse),
         .setaasa_pulse    (ccc_setaasa_pulse),
         .setdasa_valid    (ccc_setdasa_valid),
         .setdasa_addr     (ccc_setdasa_addr),
+        .entdaa_assign_valid(ccc_entdaa_assign_valid),
+        .entdaa_assign_addr(ccc_entdaa_assign_addr),
         .transport_holdoff(ccc_transport_holdoff),
         .ccc_seen         (ccc_seen),
         .last_ccc         (last_ccc)

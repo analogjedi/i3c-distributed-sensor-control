@@ -12,9 +12,10 @@ Current code and planning artifacts:
 - `rtl/i3c_sdr_controller.v`: Compatibility wrapper preserving the original simple controller interface.
 - `rtl/i3c_ctrl_ccc.v`: Broadcast CCC issue path built on the transaction layer.
 - `rtl/i3c_ctrl_direct_ccc.v`: Controller-side direct CCC framing engine with repeated-start support for direct write/read command flows.
+- `rtl/i3c_ctrl_entdaa.v`: Controller-side single-target `ENTDAA` sequencer for PID/BCR/DCR capture and dynamic-address assignment.
 - `rtl/i3c_ctrl_daa.v`: Controller-side dynamic-address assignment state scaffolding.
 - `rtl/i3c_target_transport.v`: Synthesizable SDR target transport block.
-- `rtl/i3c_target_ccc.v`: Target-side broadcast CCC decode block for address-state control.
+- `rtl/i3c_target_ccc.v`: Target-side CCC decode block for broadcast CCCs, direct `SETDASA`/`GETPID`, and single-target `ENTDAA` participation.
 - `rtl/i3c_target_daa.v`: Target-side dynamic-address state block.
 - `rtl/i3c_target_top.v`: Target integration wrapper joining transport and DAA state.
 - `rtl/spartan7_i3c_top.v`: Example top-level wrapper for Spartan-7 (includes Xilinx `IOBUF` usage).
@@ -27,6 +28,8 @@ Current code and planning artifacts:
 - `tb/tb_i3c_direct_ccc_write.v`: Regression for controller-side direct CCC write framing with repeated start.
 - `tb/tb_i3c_direct_ccc_read.v`: Regression for controller-side direct CCC read framing and response capture.
 - `tb/tb_i3c_setdasa.v`: Integration regression for target-side direct CCC decode and `SETDASA` dynamic-address assignment.
+- `tb/tb_i3c_getpid.v`: Integration regression for target-side `GETPID` readback.
+- `tb/tb_i3c_entdaa.v`: First real controller/target `ENTDAA` regression with controller-side DAA bookkeeping.
 - `constraints/spartan7_i3c_demo.xdc`: Constraint template to adapt to your board.
 - `Makefile`: Simulation runner (`iverilog` + `vvp`).
 - `docs/I3C_Closed_System_IP_Plan.md`: original program plan.
@@ -39,8 +42,8 @@ Current code and planning artifacts:
 
 The RTL in this repo is still a bring-up baseline plus early Phase 1 scaffolding, not a full I3C Basic implementation. It does **not** yet include:
 
-- Bus-level `ENTDAA` transaction sequencing
-- Full direct-target CCC decode/response integration for commands such as `GETPID`
+- Multi-target `ENTDAA` arbitration/sequencing
+- Broad direct-target CCC decode/response beyond `SETDASA` and `GETPID`
 - In-band interrupts (IBI)
 - HDR modes
 
@@ -52,6 +55,8 @@ What now exists beyond the original Phase 0 baseline:
 - broadcast CCC issue/decode support for `RSTDAA` and `SETAASA`
 - controller-side direct CCC framing with repeated-start sequencing for direct write/read command flows
 - target-side direct CCC decode and transport holdoff for `SETDASA`
+- target-side `GETPID` readback
+- single-target `ENTDAA` controller/target baseline with PID/BCR/DCR capture and dynamic-address assignment
 - dedicated regressions for target transport and DAA state behavior
 
 It gives you a clean path to:
@@ -76,6 +81,8 @@ Expected result:
 - `sim-direct-ccc-write` prints `PASS` for direct CCC write framing
 - `sim-direct-ccc-read` prints `PASS` for direct CCC read framing and response capture
 - `sim-setdasa` prints `PASS` for direct CCC target decode and dynamic-address takeover
+- `sim-getpid` prints `PASS` for direct CCC `GETPID`
+- `sim-entdaa` prints `PASS` for the single-target `ENTDAA` baseline
 
 If you only want the original happy-path test:
 
@@ -95,8 +102,8 @@ In short:
 
 - Phase 0 in this repo is a minimal SDR transport bring-up path for Spartan-7.
 - Phase 0.5 is now implemented: controller refactor plus synthesizable target transport.
-- Phase 1 now includes DAA state scaffolding, broadcast CCC support (`RSTDAA`, `SETAASA`), controller-side direct CCC framing, and target-side `SETDASA`.
-- The remaining Phase 1 work is `GETPID`, real bus-level `ENTDAA`, broader reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
+- Phase 1 now includes DAA state scaffolding, broadcast CCC support (`RSTDAA`, `SETAASA`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`, and a first real single-target `ENTDAA` path.
+- The remaining Phase 1 work is multi-target `ENTDAA`, broader CCC coverage, deeper reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
 ## Vivado Bring-up
