@@ -34,6 +34,7 @@ module i3c_target_ccc #(
     localparam [2:0] ST_ACK      = 3'd2;
     localparam [2:0] ST_DATA     = 3'd3;
     localparam [2:0] ST_READ     = 3'd4;
+    localparam [2:0] ST_WAIT_STOP= 3'd5;
 
     localparam [2:0] ACK_NONE          = 3'd0;
     localparam [2:0] ACK_CCC_ADDR      = 3'd1;
@@ -62,6 +63,7 @@ module i3c_target_ccc #(
     reg       collecting_entdaa_assign;
     reg       pending_direct_ccc;
     reg       pending_entdaa;
+    reg       entdaa_lost;
     reg       direct_target_match;
     reg [1:0] read_kind;
     reg [3:0] read_bit_pos;
@@ -141,6 +143,7 @@ module i3c_target_ccc #(
             collecting_entdaa_assign<= 1'b0;
             pending_direct_ccc      <= 1'b0;
             pending_entdaa          <= 1'b0;
+            entdaa_lost            <= 1'b0;
             direct_target_match     <= 1'b0;
             read_kind               <= READ_NONE;
             read_bit_pos            <= 4'd0;
@@ -157,6 +160,10 @@ module i3c_target_ccc #(
             ccc_seen                <= 1'b0;
             last_ccc                <= 8'h00;
         end else if (scl === 1'b1) begin
+            if (entdaa_lost) begin
+                pending_entdaa    <= 1'b0;
+                transport_holdoff <= 1'b0;
+            end
             state                   <= ST_ADDR;
             ack_context             <= ACK_NONE;
             bit_pos                 <= 4'd0;
@@ -170,6 +177,7 @@ module i3c_target_ccc #(
             collecting_direct_data  <= 1'b0;
             collecting_entdaa_assign<= 1'b0;
             direct_target_match     <= 1'b0;
+            entdaa_lost            <= 1'b0;
             rstdaa_pulse            <= 1'b0;
             setaasa_pulse           <= 1'b0;
             setdasa_valid           <= 1'b0;
@@ -207,6 +215,7 @@ module i3c_target_ccc #(
             transport_holdoff       <= 1'b0;
             pending_direct_ccc      <= 1'b0;
             pending_entdaa          <= 1'b0;
+            entdaa_lost            <= 1'b0;
         end else if (scl === 1'b1) begin
             state                   <= (pending_direct_ccc || pending_entdaa) ? ST_ADDR : ST_IDLE;
             ack_context             <= ACK_NONE;
@@ -221,6 +230,7 @@ module i3c_target_ccc #(
             collecting_direct_data  <= 1'b0;
             collecting_entdaa_assign<= 1'b0;
             direct_target_match     <= 1'b0;
+            entdaa_lost            <= 1'b0;
             read_kind               <= READ_NONE;
             read_bit_pos            <= 4'd0;
             read_byte_idx           <= 4'd0;
@@ -264,6 +274,7 @@ module i3c_target_ccc #(
             collecting_entdaa_assign<= 1'b0;
             pending_direct_ccc      <= 1'b0;
             pending_entdaa          <= 1'b0;
+            entdaa_lost            <= 1'b0;
             direct_target_match     <= 1'b0;
             read_kind               <= READ_NONE;
             read_bit_pos            <= 4'd0;
@@ -298,10 +309,16 @@ module i3c_target_ccc #(
                         bit_pos             <= 4'd0;
                         state               <= ST_ACK;
 
-                        if (pending_entdaa) begin
+                        if (pending_entdaa && (assembled_byte == {CCC_ADDR, 1'b1})) begin
                             ack_context   <= ACK_ENTDAA_ADDR;
-                            ack_drive_low <= !dynamic_addr_valid &&
-                                             (assembled_byte == {CCC_ADDR, 1'b1});
+                            ack_drive_low <= !dynamic_addr_valid;
+                        end else if (pending_entdaa &&
+                                     ((assembled_byte & 8'hFE) == {CCC_ADDR, 1'b0})) begin
+                            pending_entdaa    <= 1'b0;
+                            transport_holdoff <= 1'b0;
+                            current_addr_is_ccc <= 1'b1;
+                            ack_context       <= ACK_CCC_ADDR;
+                            ack_drive_low     <= !sda;
                         end else if (pending_direct_ccc) begin
                             ack_context   <= ACK_DIRECT_ADDR;
                             ack_drive_low <= direct_addr_match &&
@@ -364,7 +381,7 @@ module i3c_target_ccc #(
                         end
 
                         ACK_ENTDAA_ADDR: begin
-                            if (!dynamic_addr_valid) begin
+                            if (!dynamic_addr_valid && !entdaa_lost) begin
                                 state        <= ST_READ;
                                 read_kind    <= READ_ENTDAA;
                                 read_byte_idx<= 4'd0;
@@ -446,10 +463,20 @@ module i3c_target_ccc #(
                 end
 
                 ST_READ: begin
-                    if (read_bit_pos < 4'd7) begin
-                        read_bit_pos <= read_bit_pos + 1'b1;
-                    end else if (read_bit_pos == 4'd7) begin
-                        read_bit_pos <= 4'd8;
+                    if (read_bit_pos < 4'd8) begin
+                        if ((read_kind == READ_ENTDAA) &&
+                            read_shift[7 - read_bit_pos[2:0]] &&
+                            (sda == 1'b0)) begin
+                            state       <= ST_WAIT_STOP;
+                            entdaa_lost <= 1'b1;
+                            read_kind   <= READ_NONE;
+                            read_len    <= 4'd0;
+                            read_bit_pos<= 4'd0;
+                        end else if (read_bit_pos < 4'd7) begin
+                            read_bit_pos <= read_bit_pos + 1'b1;
+                        end else begin
+                            read_bit_pos <= 4'd8;
+                        end
                     end else begin
                         if ((read_byte_idx + 1'b1) < read_len) begin
                             read_byte_idx <= read_byte_idx + 1'b1;
@@ -471,6 +498,11 @@ module i3c_target_ccc #(
                             read_len  <= 4'd0;
                         end
                     end
+                end
+
+                ST_WAIT_STOP: begin
+                    // Another target won ENTDAA arbitration for this cycle.
+                    // Stay quiet until the controller issues a new START.
                 end
 
                 default: begin

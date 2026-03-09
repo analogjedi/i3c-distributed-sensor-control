@@ -42,14 +42,15 @@ Implemented and regression-backed:
 - target-side direct CCC decode/response for:
   - `SETDASA`
   - `GETPID`
-- single-target `ENTDAA` controller/target baseline with:
+- multi-target `ENTDAA` controller/target baseline with:
   - PID/BCR/DCR capture
   - controller-side DAA address assignment
+  - arbitration-driven target ordering
 
 Not yet implemented:
 
-- multi-target `ENTDAA`
 - broader target-side direct CCC decode/response path
+- richer controller endpoint inventory state beyond PID-only DAA bookkeeping
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -247,8 +248,8 @@ Current status:
 - controller-side direct CCC framing is implemented and regression-backed
 - target-side `SETDASA` is implemented and regression-backed
 - target-side `GETPID` is implemented and regression-backed
-- a first real single-target `ENTDAA` controller/target regression is implemented
-- multi-target `ENTDAA` remains outstanding
+- multi-target `ENTDAA` sequencing is implemented and regression-backed
+- richer controller inventory/policy state remains outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -420,7 +421,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. expand `ENTDAA` from single-target baseline to multi-target regression coverage
+1. add controller inventory/policy hooks for BCR/DCR alongside PID capture
 2. expand target-side direct CCC decode/response beyond `SETDASA` and `GETPID`
-3. add controller inventory/policy hooks for BCR/DCR alongside PID capture
+3. add multi-target `ENTDAA` stress coverage beyond the current two-target baseline
 4. only then expand into reset-policy CCCs and IBI control
