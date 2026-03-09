@@ -36,13 +36,16 @@ Implemented and regression-backed:
 - broadcast CCC support for:
   - `RSTDAA`
   - `SETAASA`
+- controller-side direct CCC framing with repeated-start sequencing for:
+  - direct write transactions
+  - direct read transactions
 
 Not yet implemented:
 
-- direct CCC framing
 - `SETDASA`
 - `GETPID`
 - bus-modal `ENTDAA`
+- target-side direct CCC decode/response path
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -223,7 +226,7 @@ Goal:
 
 Controller tasks:
 - implement boot state machine for discovery and address assignment
-- implement direct CCC support needed for `SETDASA`
+- complete the direct CCC support needed for `SETDASA`
 - implement `ENTDAA`
 - optionally add `SETDASA` or `SETAASA` path if selected for product boot
 - populate endpoint table from assignment results
@@ -237,7 +240,8 @@ Current status:
 
 - `SETAASA` path is implemented through broadcast CCC handling
 - target address-state reset via `RSTDAA` is implemented
-- full direct CCC path and `ENTDAA` remain outstanding
+- controller-side direct CCC framing is implemented and regression-backed
+- target-side direct CCC behavior, `SETDASA`, `GETPID`, and `ENTDAA` remain outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -259,7 +263,8 @@ Current status:
 
 - broadcast CCC issue/decode path is implemented
 - supported CCCs today are `RSTDAA` and `SETAASA`
-- direct CCC framing is not yet implemented, so `SETDASA` and `GETPID` remain next
+- controller-side direct CCC framing is implemented in a standalone sequencer
+- target-side direct CCC decode and response generation are still missing, so `SETDASA` and `GETPID` remain next
 
 Minimum CCC set to lock before coding:
 - addressing support needed for chosen boot flow
@@ -378,9 +383,9 @@ Exit criteria:
 Recommended order of actual implementation:
 
 1. refactor bus engine and create synthesizable target transport
-2. add multi-byte transaction support
-3. add DAA
-4. add CCC subset
+2. add direct CCC framing support
+3. add DAA and direct target-side CCC support
+4. add broader CCC subset
 5. add register shell and profile data model
 6. add IBI
 7. add reset/recovery
@@ -407,7 +412,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. add direct CCC framing support to the controller transport path
+1. integrate target-side direct CCC decode/response into `rtl/i3c_target_ccc.v` and `rtl/i3c_target_top.v`
 2. implement and verify `SETDASA`
 3. implement and verify `GETPID`
 4. build the first real `ENTDAA` modal-flow controller/target regression
