@@ -74,6 +74,24 @@ It gives you a clean path to:
 2. Synthesize for Spartan-7
 3. Probe `SCL`/`SDA` on hardware and confirm protocol framing
 
+## Feature Status
+
+| Feature / Command | Status | Notes |
+| --- | --- | --- |
+| SDR private read/write | Implemented | Baseline controller/target transport path is regression-backed. |
+| Broadcast CCC `RSTDAA` | Implemented | Target address-state reset path is wired and tested. |
+| Broadcast CCC `SETAASA` | Implemented | Static-assisted address activation path is wired and tested. |
+| Direct CCC framing | Implemented | Controller-side repeated-start direct write/read framing is in place. |
+| Direct CCC `SETDASA` | Implemented | Target-side decode updates dynamic address and suppresses normal transport during the command. |
+| Direct CCC `GETPID` | Implemented | Target returns provisional ID through the direct CCC read path. |
+| `ENTDAA` single-target baseline | Implemented | Controller captures PID/BCR/DCR and assigns a dynamic address through the current single-target regression. |
+| `ENTDAA` multi-target sequencing | Pending | Next major protocol step: multiple unassigned targets, ordering, and repeated assignment loop. |
+| Broader CCC subset | Pending | Additional direct/broadcast CCCs for policy, status, and recovery still need implementation. |
+| Scheduler-driven multi-endpoint service | Pending | Polling cadence, bandwidth allocation, and health accounting are not in RTL yet. |
+| Reset and recovery policy | Pending | Basic address-state commands exist, but retry/escalation logic is still ahead. |
+| In-band interrupts (IBI) | Future | Intentionally deferred until addressing, CCCs, and scheduler behavior are stable. |
+| HDR modes | Future | Explicitly out of current project scope. |
+
 ## Quick Start (Simulation)
 
 ```bash
