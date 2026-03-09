@@ -39,13 +39,14 @@ Implemented and regression-backed:
 - controller-side direct CCC framing with repeated-start sequencing for:
   - direct write transactions
   - direct read transactions
+- target-side direct CCC decode/response for:
+  - `SETDASA`
 
 Not yet implemented:
 
-- `SETDASA`
 - `GETPID`
 - bus-modal `ENTDAA`
-- target-side direct CCC decode/response path
+- broader target-side direct CCC decode/response path
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -241,7 +242,8 @@ Current status:
 - `SETAASA` path is implemented through broadcast CCC handling
 - target address-state reset via `RSTDAA` is implemented
 - controller-side direct CCC framing is implemented and regression-backed
-- target-side direct CCC behavior, `SETDASA`, `GETPID`, and `ENTDAA` remain outstanding
+- target-side `SETDASA` is implemented and regression-backed
+- `GETPID` and `ENTDAA` remain outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -264,7 +266,8 @@ Current status:
 - broadcast CCC issue/decode path is implemented
 - supported CCCs today are `RSTDAA` and `SETAASA`
 - controller-side direct CCC framing is implemented in a standalone sequencer
-- target-side direct CCC decode and response generation are still missing, so `SETDASA` and `GETPID` remain next
+- target-side direct CCC decode now supports `SETDASA`
+- `GETPID` remains the next direct CCC milestone
 
 Minimum CCC set to lock before coding:
 - addressing support needed for chosen boot flow
@@ -274,8 +277,8 @@ Minimum CCC set to lock before coding:
 
 Recommended near-term CCC order:
 
-1. `SETDASA`
-2. `GETPID`
+1. `GETPID`
+2. any additional direct CCCs needed by the boot/profile contract
 3. any event-control CCCs needed before IBI work
 4. reset-policy CCCs beyond `RSTDAA`
 
@@ -412,8 +415,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. integrate target-side direct CCC decode/response into `rtl/i3c_target_ccc.v` and `rtl/i3c_target_top.v`
-2. implement and verify `SETDASA`
-3. implement and verify `GETPID`
-4. build the first real `ENTDAA` modal-flow controller/target regression
-5. only then expand into reset-policy CCCs and IBI control
+1. implement and verify `GETPID`
+2. expand target-side direct CCC decode/response beyond `SETDASA`
+3. build the first real `ENTDAA` modal-flow controller/target regression
+4. only then expand into reset-policy CCCs and IBI control

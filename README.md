@@ -26,6 +26,7 @@ Current code and planning artifacts:
 - `tb/tb_i3c_broadcast_ccc.v`: Regression for broadcast CCC handling (`RSTDAA`, `SETAASA`).
 - `tb/tb_i3c_direct_ccc_write.v`: Regression for controller-side direct CCC write framing with repeated start.
 - `tb/tb_i3c_direct_ccc_read.v`: Regression for controller-side direct CCC read framing and response capture.
+- `tb/tb_i3c_setdasa.v`: Integration regression for target-side direct CCC decode and `SETDASA` dynamic-address assignment.
 - `constraints/spartan7_i3c_demo.xdc`: Constraint template to adapt to your board.
 - `Makefile`: Simulation runner (`iverilog` + `vvp`).
 - `docs/I3C_Closed_System_IP_Plan.md`: original program plan.
@@ -39,7 +40,7 @@ Current code and planning artifacts:
 The RTL in this repo is still a bring-up baseline plus early Phase 1 scaffolding, not a full I3C Basic implementation. It does **not** yet include:
 
 - Bus-level `ENTDAA` transaction sequencing
-- Full direct-target CCC decode/response integration for commands such as `SETDASA` and `GETPID`
+- Full direct-target CCC decode/response integration for commands such as `GETPID`
 - In-band interrupts (IBI)
 - HDR modes
 
@@ -50,6 +51,7 @@ What now exists beyond the original Phase 0 baseline:
 - controller-side and target-side dynamic-address state scaffolding
 - broadcast CCC issue/decode support for `RSTDAA` and `SETAASA`
 - controller-side direct CCC framing with repeated-start sequencing for direct write/read command flows
+- target-side direct CCC decode and transport holdoff for `SETDASA`
 - dedicated regressions for target transport and DAA state behavior
 
 It gives you a clean path to:
@@ -73,6 +75,7 @@ Expected result:
 - `sim-ccc` prints `PASS` for broadcast CCC-driven address-state changes
 - `sim-direct-ccc-write` prints `PASS` for direct CCC write framing
 - `sim-direct-ccc-read` prints `PASS` for direct CCC read framing and response capture
+- `sim-setdasa` prints `PASS` for direct CCC target decode and dynamic-address takeover
 
 If you only want the original happy-path test:
 
@@ -92,8 +95,8 @@ In short:
 
 - Phase 0 in this repo is a minimal SDR transport bring-up path for Spartan-7.
 - Phase 0.5 is now implemented: controller refactor plus synthesizable target transport.
-- Phase 1 now includes DAA state scaffolding, broadcast CCC support (`RSTDAA`, `SETAASA`), and controller-side direct CCC framing.
-- The remaining Phase 1 work is target-side direct CCC decode/response, `SETDASA`, `GETPID`, real bus-level `ENTDAA`, reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
+- Phase 1 now includes DAA state scaffolding, broadcast CCC support (`RSTDAA`, `SETAASA`), controller-side direct CCC framing, and target-side `SETDASA`.
+- The remaining Phase 1 work is `GETPID`, real bus-level `ENTDAA`, broader reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
 ## Vivado Bring-up

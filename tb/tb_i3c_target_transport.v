@@ -68,6 +68,7 @@ module tb_i3c_target_transport;
         .rst_n      (rst_n),
         .scl        (scl_line),
         .sda        (sda_line),
+        .suppress   (1'b0),
         .target_addr(7'h2A),
         .read_data  (target_read_data),
         .write_data (target_write_data),

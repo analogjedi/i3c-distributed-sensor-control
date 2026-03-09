@@ -26,7 +26,15 @@ module i3c_target_top #(
 
     wire ccc_rstdaa_pulse;
     wire ccc_setaasa_pulse;
+    wire ccc_setdasa_valid;
+    wire [6:0] ccc_setdasa_addr;
+    wire ccc_transport_holdoff;
     wire ccc_seen;
+    wire target_assign_dynamic_addr_valid;
+    wire [6:0] target_assign_dynamic_addr;
+
+    assign target_assign_dynamic_addr_valid = assign_dynamic_addr_valid | ccc_setdasa_valid;
+    assign target_assign_dynamic_addr = ccc_setdasa_valid ? ccc_setdasa_addr : assign_dynamic_addr;
 
     i3c_target_daa #(
         .STATIC_ADDR(STATIC_ADDR),
@@ -36,8 +44,8 @@ module i3c_target_top #(
         .rst_n                   (rst_n),
         .clear_dynamic_addr      (clear_dynamic_addr | ccc_rstdaa_pulse),
         .set_static_dynamic_addr (ccc_setaasa_pulse),
-        .assign_dynamic_addr_valid(assign_dynamic_addr_valid),
-        .assign_dynamic_addr     (assign_dynamic_addr),
+        .assign_dynamic_addr_valid(target_assign_dynamic_addr_valid),
+        .assign_dynamic_addr     (target_assign_dynamic_addr),
         .active_addr             (active_addr),
         .dynamic_addr_valid      (dynamic_addr_valid),
         .provisional_id          (provisional_id)
@@ -47,6 +55,7 @@ module i3c_target_top #(
         .rst_n      (rst_n),
         .scl        (scl),
         .sda        (sda),
+        .suppress   (ccc_transport_holdoff),
         .read_data  (read_data),
         .write_data (write_data),
         .write_valid(write_valid),
@@ -55,13 +64,19 @@ module i3c_target_top #(
         .target_addr(active_addr)
     );
 
-    i3c_target_ccc u_target_ccc (
-        .rst_n        (rst_n),
-        .scl          (scl),
-        .sda          (sda),
-        .rstdaa_pulse (ccc_rstdaa_pulse),
-        .setaasa_pulse(ccc_setaasa_pulse),
-        .ccc_seen     (ccc_seen),
-        .last_ccc     (last_ccc)
+    i3c_target_ccc #(
+        .STATIC_ADDR(STATIC_ADDR)
+    ) u_target_ccc (
+        .rst_n            (rst_n),
+        .scl              (scl),
+        .sda              (sda),
+        .active_addr      (active_addr),
+        .rstdaa_pulse     (ccc_rstdaa_pulse),
+        .setaasa_pulse    (ccc_setaasa_pulse),
+        .setdasa_valid    (ccc_setdasa_valid),
+        .setdasa_addr     (ccc_setdasa_addr),
+        .transport_holdoff(ccc_transport_holdoff),
+        .ccc_seen         (ccc_seen),
+        .last_ccc         (last_ccc)
     );
 endmodule
