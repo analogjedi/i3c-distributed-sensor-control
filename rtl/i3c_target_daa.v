@@ -7,6 +7,7 @@ module i3c_target_daa #(
     input  wire       clk,
     input  wire       rst_n,
     input  wire       clear_dynamic_addr,
+    input  wire       set_static_dynamic_addr,
     input  wire       assign_dynamic_addr_valid,
     input  wire [6:0] assign_dynamic_addr,
 
@@ -24,6 +25,9 @@ module i3c_target_daa #(
         end else if (clear_dynamic_addr) begin
             active_addr        <= STATIC_ADDR;
             dynamic_addr_valid <= 1'b0;
+        end else if (set_static_dynamic_addr) begin
+            active_addr        <= STATIC_ADDR;
+            dynamic_addr_valid <= 1'b1;
         end else if (assign_dynamic_addr_valid) begin
             active_addr        <= assign_dynamic_addr;
             dynamic_addr_valid <= 1'b1;

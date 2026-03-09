@@ -20,8 +20,13 @@ module i3c_target_top #(
     output wire       selected,
     output wire [6:0] active_addr,
     output wire       dynamic_addr_valid,
-    output wire [47:0] provisional_id
+    output wire [47:0] provisional_id,
+    output wire [7:0]  last_ccc
 );
+
+    wire ccc_rstdaa_pulse;
+    wire ccc_setaasa_pulse;
+    wire ccc_seen;
 
     i3c_target_daa #(
         .STATIC_ADDR(STATIC_ADDR),
@@ -29,7 +34,8 @@ module i3c_target_top #(
     ) u_target_daa (
         .clk                     (clk),
         .rst_n                   (rst_n),
-        .clear_dynamic_addr      (clear_dynamic_addr),
+        .clear_dynamic_addr      (clear_dynamic_addr | ccc_rstdaa_pulse),
+        .set_static_dynamic_addr (ccc_setaasa_pulse),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid),
         .assign_dynamic_addr     (assign_dynamic_addr),
         .active_addr             (active_addr),
@@ -47,5 +53,15 @@ module i3c_target_top #(
         .read_valid (read_valid),
         .selected   (selected),
         .target_addr(active_addr)
+    );
+
+    i3c_target_ccc u_target_ccc (
+        .rst_n        (rst_n),
+        .scl          (scl),
+        .sda          (sda),
+        .rstdaa_pulse (ccc_rstdaa_pulse),
+        .setaasa_pulse(ccc_setaasa_pulse),
+        .ccc_seen     (ccc_seen),
+        .last_ccc     (last_ccc)
     );
 endmodule

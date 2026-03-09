@@ -26,6 +26,26 @@ Deferred beyond Phase 1:
 - multi-lane
 - broad I2C coexistence
 
+## 2.1 Current Implementation Status
+Implemented and regression-backed:
+
+- SDR controller transport stack refactor
+- synthesizable SDR target transport
+- controller-side DAA bookkeeping state
+- target-side dynamic/static address state
+- broadcast CCC support for:
+  - `RSTDAA`
+  - `SETAASA`
+
+Not yet implemented:
+
+- direct CCC framing
+- `SETDASA`
+- `GETPID`
+- bus-modal `ENTDAA`
+- IBI
+- reset/recovery protocol flow beyond basic address-state control
+
 ## 3. Responsibility Split
 
 ### 3.1 Controller Must Own
@@ -203,6 +223,7 @@ Goal:
 
 Controller tasks:
 - implement boot state machine for discovery and address assignment
+- implement direct CCC support needed for `SETDASA`
 - implement `ENTDAA`
 - optionally add `SETDASA` or `SETAASA` path if selected for product boot
 - populate endpoint table from assignment results
@@ -211,6 +232,12 @@ Target tasks:
 - implement target identity response for DAA
 - capture and retain assigned dynamic address
 - support reset-to-unassigned and reset-to-known-state transitions
+
+Current status:
+
+- `SETAASA` path is implemented through broadcast CCC handling
+- target address-state reset via `RSTDAA` is implemented
+- full direct CCC path and `ENTDAA` remain outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -228,11 +255,24 @@ Target tasks:
 - implement supported CCC decode and state updates
 - reject unsupported CCCs in a defined way
 
+Current status:
+
+- broadcast CCC issue/decode path is implemented
+- supported CCCs today are `RSTDAA` and `SETAASA`
+- direct CCC framing is not yet implemented, so `SETDASA` and `GETPID` remain next
+
 Minimum CCC set to lock before coding:
 - addressing support needed for chosen boot flow
 - event enable/disable commands used by policy
 - status/control commands required by boot and service flow
 - reset-related commands required by the recovery plan
+
+Recommended near-term CCC order:
+
+1. `SETDASA`
+2. `GETPID`
+3. any event-control CCCs needed before IBI work
+4. reset-policy CCCs beyond `RSTDAA`
 
 Exit criteria:
 - directed CCC tests pass for every supported command
@@ -364,3 +404,11 @@ The next concrete repository tasks should be:
 3. add a controller-target multi-byte integration testbench
 4. add DAA-focused directed tests before implementing CCC and IBI
 5. create a simple endpoint table package or include file used consistently across controller blocks
+
+Updated next concrete repository tasks:
+
+1. add direct CCC framing support to the controller transport path
+2. implement and verify `SETDASA`
+3. implement and verify `GETPID`
+4. build the first real `ENTDAA` modal-flow controller/target regression
+5. only then expand into reset-policy CCCs and IBI control

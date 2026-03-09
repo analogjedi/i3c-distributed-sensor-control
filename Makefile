@@ -1,8 +1,10 @@
 RTL_SRCS := \
 	rtl/i3c_bus_engine.v \
+	rtl/i3c_ctrl_ccc.v \
 	rtl/i3c_ctrl_daa.v \
 	rtl/i3c_ctrl_txn_layer.v \
 	rtl/i3c_sdr_controller.v \
+	rtl/i3c_target_ccc.v \
 	rtl/i3c_target_daa.v \
 	rtl/i3c_target_top.v \
 	rtl/i3c_target_transport.v
@@ -14,12 +16,13 @@ SIM_RW_OUT := simv_rw
 SIM_NACK_OUT := simv_nack
 SIM_TARGET_OUT := simv_target
 SIM_DAA_OUT := simv_daa
+SIM_CCC_OUT := simv_ccc
 
-.PHONY: sim sim-rw sim-nack sim-target sim-daa test clean
+.PHONY: sim sim-rw sim-nack sim-target sim-daa sim-ccc test clean
 
 sim: test
 
-test: sim-rw sim-nack sim-target sim-daa
+test: sim-rw sim-nack sim-target sim-daa sim-ccc
 
 sim-rw:
 	iverilog -g2012 -Wall -o $(SIM_RW_OUT) $(RTL_SRCS) $(COMMON_TB_SRCS) tb/tb_i3c_sdr_controller.v
@@ -37,5 +40,9 @@ sim-daa:
 	iverilog -g2012 -Wall -o $(SIM_DAA_OUT) $(RTL_SRCS) tb/tb_i3c_daa_state.v
 	vvp $(SIM_DAA_OUT)
 
+sim-ccc:
+	iverilog -g2012 -Wall -o $(SIM_CCC_OUT) $(RTL_SRCS) tb/tb_i3c_broadcast_ccc.v
+	vvp $(SIM_CCC_OUT)
+
 clean:
-	rm -f $(SIM_RW_OUT) $(SIM_NACK_OUT) $(SIM_TARGET_OUT) $(SIM_DAA_OUT) tb_i3c_sdr_controller.vcd tb_i3c_sdr_nack.vcd tb_i3c_target_transport.vcd
+	rm -f $(SIM_RW_OUT) $(SIM_NACK_OUT) $(SIM_TARGET_OUT) $(SIM_DAA_OUT) $(SIM_CCC_OUT) tb_i3c_sdr_controller.vcd tb_i3c_sdr_nack.vcd tb_i3c_target_transport.vcd tb_i3c_broadcast_ccc.vcd

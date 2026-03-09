@@ -10,8 +10,10 @@ Current code and planning artifacts:
 - `rtl/i3c_bus_engine.v`: Low-level SDR bus engine for START/STOP, byte transfer, and ACK/NACK handling.
 - `rtl/i3c_ctrl_txn_layer.v`: Transaction layer wrapper above the bus engine.
 - `rtl/i3c_sdr_controller.v`: Compatibility wrapper preserving the original simple controller interface.
+- `rtl/i3c_ctrl_ccc.v`: Broadcast CCC issue path built on the transaction layer.
 - `rtl/i3c_ctrl_daa.v`: Controller-side dynamic-address assignment state scaffolding.
 - `rtl/i3c_target_transport.v`: Synthesizable SDR target transport block.
+- `rtl/i3c_target_ccc.v`: Target-side broadcast CCC decode block for address-state control.
 - `rtl/i3c_target_daa.v`: Target-side dynamic-address state block.
 - `rtl/i3c_target_top.v`: Target integration wrapper joining transport and DAA state.
 - `rtl/spartan7_i3c_top.v`: Example top-level wrapper for Spartan-7 (includes Xilinx `IOBUF` usage).
@@ -20,6 +22,7 @@ Current code and planning artifacts:
 - `tb/tb_i3c_sdr_nack.v`: Negative-path testbench that verifies address-miss NACK handling.
 - `tb/tb_i3c_target_transport.v`: Regression using the synthesizable target transport in `rtl/`.
 - `tb/tb_i3c_daa_state.v`: Regression for controller/target dynamic-address state handling.
+- `tb/tb_i3c_broadcast_ccc.v`: Regression for broadcast CCC handling (`RSTDAA`, `SETAASA`).
 - `constraints/spartan7_i3c_demo.xdc`: Constraint template to adapt to your board.
 - `Makefile`: Simulation runner (`iverilog` + `vvp`).
 - `docs/I3C_Closed_System_IP_Plan.md`: original program plan.
@@ -42,6 +45,7 @@ What now exists beyond the original Phase 0 baseline:
 - refactored controller transport stack with bus-engine and transaction-layer split
 - synthesizable target transport in `rtl/`
 - controller-side and target-side dynamic-address state scaffolding
+- broadcast CCC issue/decode support for `RSTDAA` and `SETAASA`
 - dedicated regressions for target transport and DAA state behavior
 
 It gives you a clean path to:
@@ -62,6 +66,7 @@ Expected result:
 - `sim-nack` prints `PASS` after an address-miss NACK case
 - `sim-target` prints `PASS` against the synthesizable target transport
 - `sim-daa` prints `PASS` for controller/target dynamic-address state handling
+- `sim-ccc` prints `PASS` for broadcast CCC-driven address-state changes
 
 If you only want the original happy-path test:
 
@@ -81,8 +86,8 @@ In short:
 
 - Phase 0 in this repo is a minimal SDR transport bring-up path for Spartan-7.
 - Phase 0.5 is now implemented: controller refactor plus synthesizable target transport.
-- Phase 1 has started with DAA state scaffolding, but not full bus-level `ENTDAA` sequencing yet.
-- The remaining Phase 1 work is CCC subset, real address-assignment flow, reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
+- Phase 1 has started with DAA state scaffolding plus a real broadcast CCC slice (`RSTDAA`, `SETAASA`), but not full bus-level `ENTDAA` or direct CCC sequencing yet.
+- The remaining Phase 1 work is direct CCC support, real address-assignment flow, reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
 ## Vivado Bring-up

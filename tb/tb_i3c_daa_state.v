@@ -49,6 +49,7 @@ module tb_i3c_daa_state;
         .clk                     (clk),
         .rst_n                   (rst_n),
         .clear_dynamic_addr      (clear_dynamic_addr),
+        .set_static_dynamic_addr (1'b0),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid),
         .assign_dynamic_addr     (assign_dynamic_addr_in),
         .active_addr             (active_addr),
