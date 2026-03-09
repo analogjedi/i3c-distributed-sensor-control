@@ -1,9 +1,18 @@
-# Spartan-7 I3C Starter and Closed-System I3C Baseline
+# I3C Distributed Sensor Control Baseline
 
-This repository now serves two purposes:
+This repository is the RTL, verification, and architecture baseline for a closed-system I3C sensor-control platform.
 
-1. a practical Spartan-7 SDR bring-up baseline
-2. the seed repository for a larger closed-system I3C distributed sensor architecture
+The intended end-to-end system is:
+
+1. one hub controller that owns bus policy, address assignment, polling, recovery, and long-term event handling
+2. multiple target endpoints that expose sensor or actuator-facing register/data behavior behind a common I3C transport shell
+3. a deterministic boot and service flow built around CCCs, dynamic addressing, scheduled traffic, and bounded recovery behavior
+
+The repository therefore serves three linked purposes:
+
+1. define the controller/target architecture for the full distributed sensor system
+2. provide executable RTL and regression tests for the bus-management features being implemented phase by phase
+3. use Spartan-7 only as a practical hardware validation platform for SDR bring-up and signal-level verification
 
 Current code and planning artifacts:
 
