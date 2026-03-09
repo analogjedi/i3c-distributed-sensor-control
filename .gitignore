@@ -7,6 +7,9 @@ simv_*
 # Local scratch and rendered artifacts
 tmp/
 
+# Local chat exports and notes
+docs/chat_summaries/
+
 # Common Vivado-generated project outputs
 .Xil/
 *.jou
