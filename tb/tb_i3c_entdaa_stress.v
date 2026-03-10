@@ -13,7 +13,7 @@ module tb_i3c_entdaa_stress;
     wire [7:0]  discover_dcr;
     wire        daa_assign_valid;
     wire [6:0]  daa_assign_addr;
-    wire [2:0]  endpoint_count;
+    wire [3:0]  endpoint_count;
     wire        table_full;
     wire [7:0]  daa_last_bcr;
     wire [7:0]  daa_last_dcr;
@@ -61,39 +61,57 @@ module tb_i3c_entdaa_stress;
     reg  [7:0] read_data_1;
     reg  [7:0] read_data_2;
     reg  [7:0] read_data_3;
+    reg  [7:0] read_data_4;
+    reg  [7:0] read_data_5;
 
     wire [7:0] write_data_0;
     wire [7:0] write_data_1;
     wire [7:0] write_data_2;
     wire [7:0] write_data_3;
+    wire [7:0] write_data_4;
+    wire [7:0] write_data_5;
     wire       write_valid_0;
     wire       write_valid_1;
     wire       write_valid_2;
     wire       write_valid_3;
+    wire       write_valid_4;
+    wire       write_valid_5;
     wire       read_valid_0;
     wire       read_valid_1;
     wire       read_valid_2;
     wire       read_valid_3;
+    wire       read_valid_4;
+    wire       read_valid_5;
     wire       selected_0;
     wire       selected_1;
     wire       selected_2;
     wire       selected_3;
+    wire       selected_4;
+    wire       selected_5;
     wire [6:0] active_addr_0;
     wire [6:0] active_addr_1;
     wire [6:0] active_addr_2;
     wire [6:0] active_addr_3;
+    wire [6:0] active_addr_4;
+    wire [6:0] active_addr_5;
     wire       dynamic_addr_valid_0;
     wire       dynamic_addr_valid_1;
     wire       dynamic_addr_valid_2;
     wire       dynamic_addr_valid_3;
+    wire       dynamic_addr_valid_4;
+    wire       dynamic_addr_valid_5;
     wire [47:0] provisional_id_0;
     wire [47:0] provisional_id_1;
     wire [47:0] provisional_id_2;
     wire [47:0] provisional_id_3;
+    wire [47:0] provisional_id_4;
+    wire [47:0] provisional_id_5;
     wire [7:0]  last_ccc_0;
     wire [7:0]  last_ccc_1;
     wire [7:0]  last_ccc_2;
     wire [7:0]  last_ccc_3;
+    wire [7:0]  last_ccc_4;
+    wire [7:0]  last_ccc_5;
 
     pullup (scl_line);
     pullup (sda_line);
@@ -130,7 +148,7 @@ module tb_i3c_entdaa_stress;
     );
 
     i3c_ctrl_inventory #(
-        .MAX_ENDPOINTS(4),
+        .MAX_ENDPOINTS(6),
         .DYN_ADDR_BASE(7'h10)
     ) inv (
         .clk                      (clk),
@@ -148,6 +166,9 @@ module tb_i3c_entdaa_stress;
         .direct_event_clear_valid (1'b0),
         .direct_event_addr        (7'h00),
         .direct_event_mask        (8'h00),
+        .enable_update_valid      (1'b0),
+        .enable_update_addr       (7'h00),
+        .enable_update_value      (1'b0),
         .reset_action_update_valid(1'b0),
         .reset_action_update_addr (7'h00),
         .reset_action_update_value(8'h00),
@@ -167,6 +188,12 @@ module tb_i3c_entdaa_stress;
         .query_event_mask         (inv_query_event_mask),
         .query_reset_action       (inv_query_reset_action),
         .query_status             (inv_query_status),
+        .scan_index               (3'd0),
+        .scan_valid               (),
+        .scan_addr                (),
+        .scan_class               (),
+        .scan_enabled             (),
+        .scan_health_fault        (),
         .assign_valid             (daa_assign_valid),
         .assign_dynamic_addr      (daa_assign_addr),
         .daa_endpoint_count       (endpoint_count),
@@ -301,6 +328,54 @@ module tb_i3c_entdaa_stress;
         .last_ccc                (last_ccc_3)
     );
 
+    i3c_target_top #(
+        .STATIC_ADDR   (7'h34),
+        .PROVISIONAL_ID(48'h0500_0000_0001),
+        .TARGET_BCR    (8'h08),
+        .TARGET_DCR    (8'h10)
+    ) target4 (
+        .clk                     (clk),
+        .rst_n                   (rst_n),
+        .scl                     (scl_line),
+        .sda                     (sda_line),
+        .clear_dynamic_addr      (1'b0),
+        .assign_dynamic_addr_valid(1'b0),
+        .assign_dynamic_addr     (7'h00),
+        .read_data               (read_data_4),
+        .write_data              (write_data_4),
+        .write_valid             (write_valid_4),
+        .read_valid              (read_valid_4),
+        .selected                (selected_4),
+        .active_addr             (active_addr_4),
+        .dynamic_addr_valid      (dynamic_addr_valid_4),
+        .provisional_id          (provisional_id_4),
+        .last_ccc                (last_ccc_4)
+    );
+
+    i3c_target_top #(
+        .STATIC_ADDR   (7'h35),
+        .PROVISIONAL_ID(48'h2800_0000_0001),
+        .TARGET_BCR    (8'h04),
+        .TARGET_DCR    (8'h01)
+    ) target5 (
+        .clk                     (clk),
+        .rst_n                   (rst_n),
+        .scl                     (scl_line),
+        .sda                     (sda_line),
+        .clear_dynamic_addr      (1'b0),
+        .assign_dynamic_addr_valid(1'b0),
+        .assign_dynamic_addr     (7'h00),
+        .read_data               (read_data_5),
+        .write_data              (write_data_5),
+        .write_valid             (write_valid_5),
+        .read_valid              (read_valid_5),
+        .selected                (selected_5),
+        .active_addr             (active_addr_5),
+        .dynamic_addr_valid      (dynamic_addr_valid_5),
+        .provisional_id          (provisional_id_5),
+        .last_ccc                (last_ccc_5)
+    );
+
     always #5 clk = ~clk;
 
     initial begin
@@ -316,6 +391,8 @@ module tb_i3c_entdaa_stress;
         read_data_1      = 8'hD1;
         read_data_2      = 8'hD2;
         read_data_3      = 8'hD3;
+        read_data_4      = 8'hD4;
+        read_data_5      = 8'hD5;
 
         $dumpfile("tb_i3c_entdaa_stress.vcd");
         $dumpvars(0, tb_i3c_entdaa_stress);
@@ -323,13 +400,15 @@ module tb_i3c_entdaa_stress;
         #200;
         rst_n = 1'b1;
 
-        do_entdaa_expect_success(48'h1000_0000_0001, 8'h11, 8'hA1, 7'h10, 2'd3);
-        do_entdaa_expect_success(48'h1800_0000_0001, 8'h19, 8'hA9, 7'h11, 2'd3);
-        do_entdaa_expect_success(48'h2200_0000_0001, 8'h21, 8'hB1, 7'h12, 2'd2);
-        do_entdaa_expect_success(48'h3200_0000_0001, 8'h31, 8'hC1, 7'h13, 2'd2);
+        do_entdaa_expect_success(48'h0500_0000_0001, 8'h08, 8'h10, 7'h10, 2'd1);
+        do_entdaa_expect_success(48'h1000_0000_0001, 8'h11, 8'hA1, 7'h11, 2'd3);
+        do_entdaa_expect_success(48'h1800_0000_0001, 8'h19, 8'hA9, 7'h12, 2'd3);
+        do_entdaa_expect_success(48'h2200_0000_0001, 8'h21, 8'hB1, 7'h13, 2'd2);
+        do_entdaa_expect_success(48'h2800_0000_0001, 8'h04, 8'h01, 7'h14, 2'd0);
+        do_entdaa_expect_success(48'h3200_0000_0001, 8'h31, 8'hC1, 7'h15, 2'd2);
 
-        if (endpoint_count != 3'd4) begin
-            $display("FAIL: expected endpoint_count=4 got=%0d", endpoint_count);
+        if (endpoint_count != 3'd6) begin
+            $display("FAIL: expected endpoint_count=6 got=%0d", endpoint_count);
             $finish(1);
         end
         if (table_full) begin
@@ -339,22 +418,29 @@ module tb_i3c_entdaa_stress;
 
         if (!dynamic_addr_valid_0 || !dynamic_addr_valid_1 ||
             !dynamic_addr_valid_2 || !dynamic_addr_valid_3 ||
-            (active_addr_0 != 7'h13) || (active_addr_1 != 7'h10) ||
-            (active_addr_2 != 7'h12) || (active_addr_3 != 7'h11)) begin
-            $display("FAIL: stress address assignment mismatch a0=0x%02h a1=0x%02h a2=0x%02h a3=0x%02h",
-                     active_addr_0, active_addr_1, active_addr_2, active_addr_3);
+            !dynamic_addr_valid_4 || !dynamic_addr_valid_5 ||
+            (active_addr_0 != 7'h15) || (active_addr_1 != 7'h11) ||
+            (active_addr_2 != 7'h13) || (active_addr_3 != 7'h12) ||
+            (active_addr_4 != 7'h10) || (active_addr_5 != 7'h14)) begin
+            $display("FAIL: stress address assignment mismatch a0=0x%02h a1=0x%02h a2=0x%02h a3=0x%02h a4=0x%02h a5=0x%02h",
+                     active_addr_0, active_addr_1, active_addr_2, active_addr_3,
+                     active_addr_4, active_addr_5);
             $finish(1);
         end
 
-        do_read_expect_data(7'h10, 8'hD1);
-        do_read_expect_data(7'h11, 8'hD3);
-        do_read_expect_data(7'h12, 8'hD2);
-        do_read_expect_data(7'h13, 8'hD0);
+        do_read_expect_data(7'h10, 8'hD4);
+        do_read_expect_data(7'h11, 8'hD1);
+        do_read_expect_data(7'h12, 8'hD3);
+        do_read_expect_data(7'h13, 8'hD2);
+        do_read_expect_data(7'h14, 8'hD5);
+        do_read_expect_data(7'h15, 8'hD0);
 
         do_read_expect_nack(7'h30);
         do_read_expect_nack(7'h31);
         do_read_expect_nack(7'h32);
         do_read_expect_nack(7'h33);
+        do_read_expect_nack(7'h34);
+        do_read_expect_nack(7'h35);
 
         do_entdaa_expect_nack;
 

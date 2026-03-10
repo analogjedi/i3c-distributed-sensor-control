@@ -23,6 +23,10 @@ module i3c_ctrl_policy #(
     input  wire [6:0]                     direct_event_addr,
     input  wire [7:0]                     direct_event_mask,
 
+    input  wire                           enable_update_valid,
+    input  wire [6:0]                     enable_update_addr,
+    input  wire                           enable_update_value,
+
     input  wire                           reset_action_update_valid,
     input  wire [6:0]                     reset_action_update_addr,
     input  wire [7:0]                     reset_action_update_value,
@@ -44,6 +48,13 @@ module i3c_ctrl_policy #(
     output reg  [7:0]                     query_event_mask,
     output reg  [7:0]                     query_reset_action,
     output reg  [15:0]                    query_status,
+
+    input  wire [$clog2(MAX_ENDPOINTS)-1:0] scan_index,
+    output reg                            scan_valid,
+    output reg  [6:0]                     scan_addr,
+    output reg  [1:0]                     scan_class,
+    output reg                            scan_enabled,
+    output reg                            scan_health_fault,
 
     output reg  [$clog2(MAX_ENDPOINTS):0] endpoint_count,
     output reg                            table_full,
@@ -97,6 +108,11 @@ module i3c_ctrl_policy #(
         query_event_mask = 8'h00;
         query_reset_action = 8'h00;
         query_status     = 16'h0000;
+        scan_valid       = 1'b0;
+        scan_addr        = 7'h00;
+        scan_class       = 2'd0;
+        scan_enabled     = 1'b0;
+        scan_health_fault = 1'b0;
 
         for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
             if ((i < endpoint_count) && (addr_table[i] == query_addr)) begin
@@ -112,6 +128,14 @@ module i3c_ctrl_policy #(
                 query_reset_action = reset_action_table[i];
                 query_status     = status_table[i];
             end
+        end
+
+        if (scan_index < endpoint_count) begin
+            scan_valid        = 1'b1;
+            scan_addr         = addr_table[scan_index];
+            scan_class        = class_table[scan_index];
+            scan_enabled      = enabled_table[scan_index];
+            scan_health_fault = health_fault_table[scan_index];
         end
     end
 
@@ -225,6 +249,18 @@ module i3c_ctrl_policy #(
                 if (direct_seen_match) begin
                     last_event_mask <= updated_mask;
                 end else begin
+                    policy_update_miss <= 1'b1;
+                end
+            end else if (enable_update_valid) begin
+                direct_seen_match = 1'b0;
+                last_update_addr  <= enable_update_addr;
+                for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
+                    if ((i < endpoint_count) && (addr_table[i] == enable_update_addr)) begin
+                        enabled_table[i] <= enable_update_value;
+                        direct_seen_match = 1'b1;
+                    end
+                end
+                if (!direct_seen_match) begin
                     policy_update_miss <= 1'b1;
                 end
             end else if (reset_action_update_valid) begin

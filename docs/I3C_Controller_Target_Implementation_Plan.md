@@ -61,11 +61,12 @@ Implemented and regression-backed:
   - reset action
   - last status
   - basic health bits
+- first round-robin scheduler stub that consumes integrated policy state
 
 Not yet implemented:
 
 - additional reset/status CCCs beyond the current addressing and event-control subset
-- scheduler-facing controller policy and service state beyond current class/enable/health/status bookkeeping
+- scheduler-to-transaction integration and richer controller service state beyond current class/enable/health/status bookkeeping
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -276,7 +277,9 @@ Current status:
 - multi-target `ENTDAA` sequencing is implemented and regression-backed
 - controller inventory now retains PID/BCR/DCR
 - DAA discovery now auto-populates controller policy records
-- controller policy now tracks per-address class, default enable state, event-enable masks, reset action, last status, and basic health bits, while scheduler/service policy remains outstanding
+- controller policy now tracks per-address class, default enable state, event-enable masks, reset action, last status, and basic health bits
+- a first controller scheduler stub now walks integrated policy state and emits round-robin service requests while skipping disabled or faulted endpoints
+- `ENTDAA` stress coverage now reaches a six-endpoint exact-fit baseline
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -449,7 +452,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. integrate controller inventory/policy state into a first scheduler stub
-2. extend `ENTDAA` stress coverage toward six-endpoint scheduling assumptions
+1. connect scheduler service requests into real controller transaction issue
+2. add richer scheduler-facing service statistics and per-endpoint cadence control
 3. add additional recovery/status CCC coverage beyond the current baseline
 4. only then expand into reset-policy CCCs and IBI control
