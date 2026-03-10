@@ -3,6 +3,7 @@
 module i3c_ctrl_policy #(
     parameter integer MAX_ENDPOINTS = 8
 ) (
+    input  wire                           default_endpoint_enable,
     input  wire                           clk,
     input  wire                           rst_n,
     input  wire                           clear_table,
@@ -29,12 +30,17 @@ module i3c_ctrl_policy #(
     input  wire                           status_update_valid,
     input  wire [6:0]                     status_update_addr,
     input  wire [15:0]                    status_update_value,
+    input  wire                           status_update_ok,
 
     input  wire [6:0]                     query_addr,
     output reg                            query_found,
     output reg  [47:0]                    query_pid,
     output reg  [7:0]                     query_bcr,
     output reg  [7:0]                     query_dcr,
+    output reg  [1:0]                     query_class,
+    output reg                            query_enabled,
+    output reg                            query_health_fault,
+    output reg                            query_last_seen_ok,
     output reg  [7:0]                     query_event_mask,
     output reg  [7:0]                     query_reset_action,
     output reg  [15:0]                    query_status,
@@ -55,15 +61,39 @@ module i3c_ctrl_policy #(
     reg [47:0] pid_table       [0:MAX_ENDPOINTS-1];
     reg [7:0]  bcr_table       [0:MAX_ENDPOINTS-1];
     reg [7:0]  dcr_table       [0:MAX_ENDPOINTS-1];
+    reg [1:0]  class_table     [0:MAX_ENDPOINTS-1];
+    reg        enabled_table   [0:MAX_ENDPOINTS-1];
+    reg        health_fault_table[0:MAX_ENDPOINTS-1];
+    reg        last_seen_ok_table[0:MAX_ENDPOINTS-1];
     reg [7:0]  event_mask_table[0:MAX_ENDPOINTS-1];
     reg [7:0]  reset_action_table[0:MAX_ENDPOINTS-1];
     reg [15:0] status_table    [0:MAX_ENDPOINTS-1];
+
+    function [1:0] derive_class;
+        input [7:0] bcr;
+        input [7:0] dcr;
+        begin
+            if (bcr[5]) begin
+                derive_class = 2'd2;
+            end else if (dcr[7]) begin
+                derive_class = 2'd3;
+            end else if (dcr[4]) begin
+                derive_class = 2'd1;
+            end else begin
+                derive_class = 2'd0;
+            end
+        end
+    endfunction
 
     always @(*) begin
         query_found      = 1'b0;
         query_pid        = 48'h0;
         query_bcr        = 8'h00;
         query_dcr        = 8'h00;
+        query_class      = 2'd0;
+        query_enabled    = 1'b0;
+        query_health_fault = 1'b0;
+        query_last_seen_ok = 1'b0;
         query_event_mask = 8'h00;
         query_reset_action = 8'h00;
         query_status     = 16'h0000;
@@ -74,6 +104,10 @@ module i3c_ctrl_policy #(
                 query_pid        = pid_table[i];
                 query_bcr        = bcr_table[i];
                 query_dcr        = dcr_table[i];
+                query_class      = class_table[i];
+                query_enabled    = enabled_table[i];
+                query_health_fault = health_fault_table[i];
+                query_last_seen_ok = last_seen_ok_table[i];
                 query_event_mask = event_mask_table[i];
                 query_reset_action = reset_action_table[i];
                 query_status     = status_table[i];
@@ -93,6 +127,10 @@ module i3c_ctrl_policy #(
                 pid_table[i]        <= 48'h0;
                 bcr_table[i]        <= 8'h00;
                 dcr_table[i]        <= 8'h00;
+                class_table[i]      <= 2'd0;
+                enabled_table[i]    <= 1'b0;
+                health_fault_table[i] <= 1'b0;
+                last_seen_ok_table[i] <= 1'b0;
                 event_mask_table[i] <= 8'h00;
                 reset_action_table[i] <= 8'h00;
                 status_table[i]     <= 16'h0000;
@@ -111,6 +149,10 @@ module i3c_ctrl_policy #(
                     pid_table[i]        <= 48'h0;
                     bcr_table[i]        <= 8'h00;
                     dcr_table[i]        <= 8'h00;
+                    class_table[i]      <= 2'd0;
+                    enabled_table[i]    <= 1'b0;
+                    health_fault_table[i] <= 1'b0;
+                    last_seen_ok_table[i] <= 1'b0;
                     event_mask_table[i] <= 8'h00;
                     reset_action_table[i] <= 8'h00;
                     status_table[i]     <= 16'h0000;
@@ -123,6 +165,7 @@ module i3c_ctrl_policy #(
                         pid_table[i]  <= endpoint_pid;
                         bcr_table[i]  <= endpoint_bcr;
                         dcr_table[i]  <= endpoint_dcr;
+                        class_table[i] <= derive_class(endpoint_bcr, endpoint_dcr);
                         add_seen_match = 1'b1;
                     end
                 end
@@ -134,6 +177,10 @@ module i3c_ctrl_policy #(
                         pid_table[endpoint_count]        <= endpoint_pid;
                         bcr_table[endpoint_count]        <= endpoint_bcr;
                         dcr_table[endpoint_count]        <= endpoint_dcr;
+                        class_table[endpoint_count]      <= derive_class(endpoint_bcr, endpoint_dcr);
+                        enabled_table[endpoint_count]    <= default_endpoint_enable;
+                        health_fault_table[endpoint_count] <= 1'b0;
+                        last_seen_ok_table[endpoint_count] <= 1'b0;
                         event_mask_table[endpoint_count] <= 8'h00;
                         reset_action_table[endpoint_count] <= 8'h00;
                         status_table[endpoint_count]     <= 16'h0000;
@@ -198,6 +245,8 @@ module i3c_ctrl_policy #(
                 for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
                     if ((i < endpoint_count) && (addr_table[i] == status_update_addr)) begin
                         status_table[i] <= status_update_value;
+                        last_seen_ok_table[i] <= status_update_ok;
+                        health_fault_table[i] <= !status_update_ok;
                         direct_seen_match = 1'b1;
                     end
                 end

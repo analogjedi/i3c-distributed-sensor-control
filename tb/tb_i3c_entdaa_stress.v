@@ -17,6 +17,18 @@ module tb_i3c_entdaa_stress;
     wire        table_full;
     wire [7:0]  daa_last_bcr;
     wire [7:0]  daa_last_dcr;
+    reg  [6:0]  inv_query_addr;
+    wire        inv_query_found;
+    wire [47:0] inv_query_pid;
+    wire [7:0]  inv_query_bcr;
+    wire [7:0]  inv_query_dcr;
+    wire [1:0]  inv_query_class;
+    wire        inv_query_enabled;
+    wire        inv_query_health_fault;
+    wire        inv_query_last_seen_ok;
+    wire [7:0]  inv_query_event_mask;
+    wire [7:0]  inv_query_reset_action;
+    wire [15:0] inv_query_status;
     wire        entdaa_done;
     wire        entdaa_nack;
     wire [6:0]  entdaa_assigned_addr;
@@ -117,25 +129,57 @@ module tb_i3c_entdaa_stress;
         .sda_i              (sda_line)
     );
 
-    i3c_ctrl_daa #(
+    i3c_ctrl_inventory #(
         .MAX_ENDPOINTS(4),
         .DYN_ADDR_BASE(7'h10)
-    ) daa (
-        .clk                (clk),
-        .rst_n              (rst_n),
-        .clear_table        (1'b0),
-        .discover_valid     (discover_valid),
-        .discover_pid       (discover_pid),
-        .discover_bcr       (discover_bcr),
-        .discover_dcr       (discover_dcr),
-        .assign_valid       (daa_assign_valid),
-        .assign_dynamic_addr(daa_assign_addr),
-        .endpoint_count     (endpoint_count),
-        .table_full         (table_full),
-        .duplicate_pid      (),
-        .last_pid           (),
-        .last_bcr           (daa_last_bcr),
-        .last_dcr           (daa_last_dcr)
+    ) inv (
+        .clk                      (clk),
+        .rst_n                    (rst_n),
+        .clear_tables             (1'b0),
+        .default_endpoint_enable  (1'b1),
+        .discover_valid           (discover_valid),
+        .discover_pid             (discover_pid),
+        .discover_bcr             (discover_bcr),
+        .discover_dcr             (discover_dcr),
+        .broadcast_event_set_valid(1'b0),
+        .broadcast_event_clear_valid(1'b0),
+        .broadcast_event_mask     (8'h00),
+        .direct_event_set_valid   (1'b0),
+        .direct_event_clear_valid (1'b0),
+        .direct_event_addr        (7'h00),
+        .direct_event_mask        (8'h00),
+        .reset_action_update_valid(1'b0),
+        .reset_action_update_addr (7'h00),
+        .reset_action_update_value(8'h00),
+        .status_update_valid      (1'b0),
+        .status_update_addr       (7'h00),
+        .status_update_value      (16'h0000),
+        .status_update_ok         (1'b0),
+        .query_addr               (inv_query_addr),
+        .query_found              (inv_query_found),
+        .query_pid                (inv_query_pid),
+        .query_bcr                (inv_query_bcr),
+        .query_dcr                (inv_query_dcr),
+        .query_class              (inv_query_class),
+        .query_enabled            (inv_query_enabled),
+        .query_health_fault       (inv_query_health_fault),
+        .query_last_seen_ok       (inv_query_last_seen_ok),
+        .query_event_mask         (inv_query_event_mask),
+        .query_reset_action       (inv_query_reset_action),
+        .query_status             (inv_query_status),
+        .assign_valid             (daa_assign_valid),
+        .assign_dynamic_addr      (daa_assign_addr),
+        .daa_endpoint_count       (endpoint_count),
+        .daa_table_full           (table_full),
+        .duplicate_pid            (),
+        .last_pid                 (),
+        .last_bcr                 (daa_last_bcr),
+        .last_dcr                 (daa_last_dcr),
+        .policy_endpoint_count    (),
+        .policy_table_full        (),
+        .policy_update_miss       (),
+        .last_update_addr         (),
+        .last_event_mask          ()
     );
 
     i3c_sdr_controller #(
@@ -263,6 +307,7 @@ module tb_i3c_entdaa_stress;
         clk              = 1'b0;
         rst_n            = 1'b0;
         entdaa_cmd_valid = 1'b0;
+        inv_query_addr   = 7'h00;
         rw_cmd_valid     = 1'b0;
         rw_cmd_addr      = 7'h00;
         rw_cmd_read      = 1'b0;
@@ -278,10 +323,10 @@ module tb_i3c_entdaa_stress;
         #200;
         rst_n = 1'b1;
 
-        do_entdaa_expect_success(48'h1000_0000_0001, 8'h11, 8'hA1, 7'h10);
-        do_entdaa_expect_success(48'h1800_0000_0001, 8'h19, 8'hA9, 7'h11);
-        do_entdaa_expect_success(48'h2200_0000_0001, 8'h21, 8'hB1, 7'h12);
-        do_entdaa_expect_success(48'h3200_0000_0001, 8'h31, 8'hC1, 7'h13);
+        do_entdaa_expect_success(48'h1000_0000_0001, 8'h11, 8'hA1, 7'h10, 2'd3);
+        do_entdaa_expect_success(48'h1800_0000_0001, 8'h19, 8'hA9, 7'h11, 2'd3);
+        do_entdaa_expect_success(48'h2200_0000_0001, 8'h21, 8'hB1, 7'h12, 2'd2);
+        do_entdaa_expect_success(48'h3200_0000_0001, 8'h31, 8'hC1, 7'h13, 2'd2);
 
         if (endpoint_count != 3'd4) begin
             $display("FAIL: expected endpoint_count=4 got=%0d", endpoint_count);
@@ -329,6 +374,7 @@ module tb_i3c_entdaa_stress;
         input [7:0]  expected_bcr;
         input [7:0]  expected_dcr;
         input [6:0]  expected_addr;
+        input [1:0]  expected_class;
         begin
             @(posedge clk);
             while (!entdaa_cmd_ready) @(posedge clk);
@@ -359,6 +405,17 @@ module tb_i3c_entdaa_stress;
             if (entdaa_assigned_addr != expected_addr) begin
                 $display("FAIL: assigned addr mismatch got=0x%02h expected=0x%02h",
                          entdaa_assigned_addr, expected_addr);
+                $finish(1);
+            end
+            inv_query_addr <= expected_addr;
+            @(posedge clk);
+            if (!inv_query_found || (inv_query_pid != expected_pid) ||
+                (inv_query_bcr != expected_bcr) || (inv_query_dcr != expected_dcr) ||
+                (inv_query_class != expected_class) || !inv_query_enabled ||
+                inv_query_health_fault || inv_query_last_seen_ok ||
+                (inv_query_event_mask != 8'h00) || (inv_query_reset_action != 8'h00) ||
+                (inv_query_status != 16'h0000)) begin
+                $display("FAIL: automatic policy population mismatch addr=0x%02h", expected_addr);
                 $finish(1);
             end
         end

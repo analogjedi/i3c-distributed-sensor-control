@@ -222,6 +222,7 @@ module tb_i3c_event_policy_ccc;
     i3c_ctrl_policy #(
         .MAX_ENDPOINTS(4)
     ) policy (
+        .default_endpoint_enable (1'b1),
         .clk                     (clk),
         .rst_n                   (rst_n),
         .clear_table             (1'b0),
@@ -243,11 +244,16 @@ module tb_i3c_event_policy_ccc;
         .status_update_valid     (1'b0),
         .status_update_addr      (7'h00),
         .status_update_value     (16'h0000),
+        .status_update_ok        (1'b0),
         .query_addr              (query_addr),
         .query_found             (query_found),
         .query_pid               (query_pid),
         .query_bcr               (query_bcr),
         .query_dcr               (query_dcr),
+        .query_class             (),
+        .query_enabled           (),
+        .query_health_fault      (),
+        .query_last_seen_ok      (),
         .query_event_mask        (query_event_mask),
         .query_reset_action      (),
         .query_status            (),

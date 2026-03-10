@@ -137,6 +137,7 @@ module tb_i3c_reset_status_policy;
     i3c_ctrl_policy #(
         .MAX_ENDPOINTS(4)
     ) policy (
+        .default_endpoint_enable (1'b1),
         .clk                     (clk),
         .rst_n                   (rst_n),
         .clear_table             (1'b0),
@@ -158,11 +159,16 @@ module tb_i3c_reset_status_policy;
         .status_update_valid     (status_update_valid),
         .status_update_addr      (status_update_addr),
         .status_update_value     (status_update_value),
+        .status_update_ok        (1'b0),
         .query_addr              (query_addr),
         .query_found             (query_found),
         .query_pid               (query_pid),
         .query_bcr               (query_bcr),
         .query_dcr               (query_dcr),
+        .query_class             (),
+        .query_enabled           (),
+        .query_health_fault      (),
+        .query_last_seen_ok      (),
         .query_event_mask        (query_event_mask),
         .query_reset_action      (query_reset_action),
         .query_status            (query_status),

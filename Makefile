@@ -4,6 +4,7 @@ RTL_SRCS := \
 	rtl/i3c_ctrl_daa.v \
 	rtl/i3c_ctrl_direct_ccc.v \
 	rtl/i3c_ctrl_entdaa.v \
+	rtl/i3c_ctrl_inventory.v \
 	rtl/i3c_ctrl_policy.v \
 	rtl/i3c_ctrl_txn_layer.v \
 	rtl/i3c_sdr_controller.v \

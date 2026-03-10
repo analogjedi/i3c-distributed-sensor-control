@@ -53,12 +53,19 @@ Implemented and regression-backed:
   - controller-side DAA address assignment
   - controller-side PID/BCR/DCR inventory retention
   - arbitration-driven target ordering
-- controller-side endpoint policy table with per-address event-mask tracking
+- controller-side inventory bridge that auto-populates policy records from DAA results
+- controller-side endpoint policy table with per-address:
+  - class
+  - default enable state
+  - event-mask
+  - reset action
+  - last status
+  - basic health bits
 
 Not yet implemented:
 
 - additional reset/status CCCs beyond the current addressing and event-control subset
-- broader controller endpoint inventory and policy state beyond PID/BCR/DCR plus event-mask/reset-action/status bookkeeping
+- scheduler-facing controller policy and service state beyond current class/enable/health/status bookkeeping
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -268,7 +275,8 @@ Current status:
 - target-side `ENEC` and `DISEC` event-mask updates are implemented and regression-backed
 - multi-target `ENTDAA` sequencing is implemented and regression-backed
 - controller inventory now retains PID/BCR/DCR
-- controller policy now tracks per-address event-enable masks, reset action, and last status, while broader policy state remains outstanding
+- DAA discovery now auto-populates controller policy records
+- controller policy now tracks per-address class, default enable state, event-enable masks, reset action, last status, and basic health bits, while scheduler/service policy remains outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -441,7 +449,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. add additional recovery/status CCC coverage beyond the current baseline
-2. add richer controller endpoint policy/state beyond PID/BCR/DCR plus event-mask/reset-action/status capture
-3. extend `ENTDAA` stress coverage toward six-endpoint scheduling assumptions
+1. integrate controller inventory/policy state into a first scheduler stub
+2. extend `ENTDAA` stress coverage toward six-endpoint scheduling assumptions
+3. add additional recovery/status CCC coverage beyond the current baseline
 4. only then expand into reset-policy CCCs and IBI control

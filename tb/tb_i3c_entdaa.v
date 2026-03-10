@@ -15,6 +15,17 @@ module tb_i3c_entdaa;
     wire [6:0] daa_assign_addr;
     wire [7:0] daa_last_bcr;
     wire [7:0] daa_last_dcr;
+    wire       inv_query_found;
+    wire [47:0] inv_query_pid;
+    wire [7:0] inv_query_bcr;
+    wire [7:0] inv_query_dcr;
+    wire [1:0] inv_query_class;
+    wire       inv_query_enabled;
+    wire       inv_query_health_fault;
+    wire       inv_query_last_seen_ok;
+    wire [7:0] inv_query_event_mask;
+    wire [7:0] inv_query_reset_action;
+    wire [15:0] inv_query_status;
     wire       entdaa_done;
     wire       entdaa_nack;
     wire [6:0] entdaa_assigned_addr;
@@ -87,25 +98,57 @@ module tb_i3c_entdaa;
         .sda_i            (sda_line)
     );
 
-    i3c_ctrl_daa #(
+    i3c_ctrl_inventory #(
         .MAX_ENDPOINTS(4),
         .DYN_ADDR_BASE(7'h10)
-    ) daa (
-        .clk                (clk),
-        .rst_n              (rst_n),
-        .clear_table        (1'b0),
-        .discover_valid     (discover_valid),
-        .discover_pid       (discover_pid),
-        .discover_bcr       (discover_bcr),
-        .discover_dcr       (discover_dcr),
-        .assign_valid       (daa_assign_valid),
-        .assign_dynamic_addr(daa_assign_addr),
-        .endpoint_count     (),
-        .table_full         (),
-        .duplicate_pid      (),
-        .last_pid           (),
-        .last_bcr           (daa_last_bcr),
-        .last_dcr           (daa_last_dcr)
+    ) inv (
+        .clk                      (clk),
+        .rst_n                    (rst_n),
+        .clear_tables             (1'b0),
+        .default_endpoint_enable  (1'b1),
+        .discover_valid           (discover_valid),
+        .discover_pid             (discover_pid),
+        .discover_bcr             (discover_bcr),
+        .discover_dcr             (discover_dcr),
+        .broadcast_event_set_valid(1'b0),
+        .broadcast_event_clear_valid(1'b0),
+        .broadcast_event_mask     (8'h00),
+        .direct_event_set_valid   (1'b0),
+        .direct_event_clear_valid (1'b0),
+        .direct_event_addr        (7'h00),
+        .direct_event_mask        (8'h00),
+        .reset_action_update_valid(1'b0),
+        .reset_action_update_addr (7'h00),
+        .reset_action_update_value(8'h00),
+        .status_update_valid      (1'b0),
+        .status_update_addr       (7'h00),
+        .status_update_value      (16'h0000),
+        .status_update_ok         (1'b0),
+        .query_addr               (7'h10),
+        .query_found              (inv_query_found),
+        .query_pid                (inv_query_pid),
+        .query_bcr                (inv_query_bcr),
+        .query_dcr                (inv_query_dcr),
+        .query_class              (inv_query_class),
+        .query_enabled            (inv_query_enabled),
+        .query_health_fault       (inv_query_health_fault),
+        .query_last_seen_ok       (inv_query_last_seen_ok),
+        .query_event_mask         (inv_query_event_mask),
+        .query_reset_action       (inv_query_reset_action),
+        .query_status             (inv_query_status),
+        .assign_valid             (daa_assign_valid),
+        .assign_dynamic_addr      (daa_assign_addr),
+        .daa_endpoint_count       (),
+        .daa_table_full           (),
+        .duplicate_pid            (),
+        .last_pid                 (),
+        .last_bcr                 (daa_last_bcr),
+        .last_dcr                 (daa_last_dcr),
+        .policy_endpoint_count    (),
+        .policy_table_full        (),
+        .policy_update_miss       (),
+        .last_update_addr         (),
+        .last_event_mask          ()
     );
 
     i3c_sdr_controller #(
@@ -190,6 +233,15 @@ module tb_i3c_entdaa;
         if ((daa_last_bcr != 8'h01) || (daa_last_dcr != 8'h5A)) begin
             $display("FAIL: controller inventory BCR/DCR mismatch bcr=0x%02h dcr=0x%02h",
                      daa_last_bcr, daa_last_dcr);
+            $finish(1);
+        end
+        if (!inv_query_found || (inv_query_pid != 48'h0BAD_F00D_CAFE) ||
+            (inv_query_bcr != 8'h01) || (inv_query_dcr != 8'h5A) ||
+            (inv_query_class != 2'd1) || !inv_query_enabled ||
+            inv_query_health_fault || inv_query_last_seen_ok ||
+            (inv_query_event_mask != 8'h00) || (inv_query_reset_action != 8'h00) ||
+            (inv_query_status != 16'h0000)) begin
+            $display("FAIL: automatic policy population mismatch");
             $finish(1);
         end
 
