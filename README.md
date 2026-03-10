@@ -28,8 +28,10 @@ This is the fastest map of what each I3C feature does in this system and how far
 | Direct CCC `GETPID` | Read a target provisional ID so the controller can identify it before or alongside address policy. | Implemented | Target returns PID through the direct CCC read path. |
 | `ENTDAA` single-target baseline | Discover one unassigned target, capture identity fields, and assign a dynamic address. | Implemented | PID/BCR/DCR capture plus controller-side assignment is regression-backed. |
 | `ENTDAA` multi-target sequencing | Enumerate multiple unassigned targets in deterministic PID order and assign addresses across repeated discovery passes. | Implemented | Two-target and four-target regressions cover arbitration ordering, BCR/DCR inventory retention, repeated assignment, full-table population, and exhaustion/NACK behavior. |
-| Broader CCC subset | Add additional management commands for policy, status, and recovery. | Pending | Current repo only covers `RSTDAA`, `SETAASA`, `SETDASA`, `GETPID`, and `ENTDAA`. |
-| Controller endpoint policy state | Turn discovered endpoints into a managed inventory with per-target policy, class, scheduling, and health state. | Pending | PID/BCR/DCR retention exists; broader policy state does not. |
+| Event-control CCCs `ENEC` / `DISEC` | Enable or disable target-side event classes so future IBI/event policy has explicit controller ownership. | Implemented | Broadcast and direct event-mask updates are wired into target state and regression-backed. |
+| Direct CCC `GETBCR` / `GETDCR` | Read back target capability/class metadata over direct CCC rather than relying only on discovery capture. | Implemented | Target returns BCR and DCR through dedicated direct CCC read regressions. |
+| Broader CCC subset | Add additional management commands for policy, status, and recovery. | In Progress | Repo now covers `RSTDAA`, `SETAASA`, `SETDASA`, `GETPID`, `GETBCR`, `GETDCR`, `ENEC`, `DISEC`, and `ENTDAA`; reset-policy/status CCCs are still ahead. |
+| Controller endpoint policy state | Turn discovered endpoints into a managed inventory with per-target policy, class, scheduling, and health state. | In Progress | PID/BCR/DCR retention plus per-endpoint event-mask policy tracking now exist; scheduler, class, and health policy do not. |
 | Scheduler-driven multi-endpoint service | Poll and service known targets deterministically once the address map is stable. | Pending | No scheduler RTL yet. |
 | Reset and recovery policy | Escalate from transaction failures or stale bus state into targeted recovery instead of blind reboot behavior. | Pending | Basic address-state commands exist, but retry/escalation logic is still ahead. |
 | In-band interrupts (IBI) | Allow rare urgent target-originated events without turning routine traffic into asynchronous chaos. | Future | Intentionally deferred until addressing, CCCs, and scheduling are stable. |
@@ -44,8 +46,9 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `rtl/i3c_ctrl_direct_ccc.v`: Controller-side direct CCC framing engine with repeated-start support for direct write/read command flows.
 - `rtl/i3c_ctrl_entdaa.v`: Controller-side `ENTDAA` sequencer baseline for PID/BCR/DCR capture and dynamic-address assignment.
 - `rtl/i3c_ctrl_daa.v`: Controller-side dynamic-address assignment and endpoint-inventory state for PID/BCR/DCR retention.
+- `rtl/i3c_ctrl_policy.v`: Controller-side endpoint policy table for per-address event-mask tracking.
 - `rtl/i3c_target_transport.v`: Synthesizable SDR target transport block.
-- `rtl/i3c_target_ccc.v`: Target-side CCC decode block for broadcast CCCs, direct `SETDASA`/`GETPID`, and `ENTDAA` participation with arbitration handling.
+- `rtl/i3c_target_ccc.v`: Target-side CCC decode block for broadcast/direct event-control CCCs, direct metadata reads, addressing CCCs, and `ENTDAA` participation with arbitration handling.
 - `rtl/i3c_target_daa.v`: Target-side dynamic-address state block.
 - `rtl/i3c_target_top.v`: Target integration wrapper joining transport and DAA state.
 - `rtl/spartan7_i3c_top.v`: Example top-level wrapper for Spartan-7 (includes Xilinx `IOBUF` usage).
@@ -59,9 +62,11 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `tb/tb_i3c_direct_ccc_read.v`: Regression for controller-side direct CCC read framing and response capture.
 - `tb/tb_i3c_setdasa.v`: Integration regression for target-side direct CCC decode and `SETDASA` dynamic-address assignment.
 - `tb/tb_i3c_getpid.v`: Integration regression for target-side `GETPID` readback.
+- `tb/tb_i3c_getbcrdcr.v`: Integration regression for direct CCC `GETBCR` and `GETDCR` readback.
 - `tb/tb_i3c_entdaa.v`: First real controller/target `ENTDAA` regression with controller-side DAA bookkeeping.
 - `tb/tb_i3c_entdaa_multi.v`: Multi-target `ENTDAA` regression covering ordering, repeated assignment, and exhaustion/NACK behavior.
 - `tb/tb_i3c_entdaa_stress.v`: Four-target `ENTDAA` stress regression covering PID ordering, BCR/DCR inventory capture, full-table population, and exhaustion/NACK behavior.
+- `tb/tb_i3c_event_policy_ccc.v`: Integration regression for `ENEC`/`DISEC` target policy updates and mirrored controller-side event-mask state.
 - `constraints/spartan7_i3c_demo.xdc`: Constraint template to adapt to your board.
 - `Makefile`: Simulation runner (`iverilog` + `vvp`).
 - `docs/I3C_Closed_System_IP_Plan.md`: original program plan.
@@ -74,7 +79,6 @@ This is the fastest map of what each I3C feature does in this system and how far
 
 The RTL in this repo is still a bring-up baseline plus early Phase 1 scaffolding, not a full I3C Basic implementation. It does **not** yet include:
 
-- Broad direct-target CCC decode/response beyond `SETDASA` and `GETPID`
 - In-band interrupts (IBI)
 - HDR modes
 
@@ -85,8 +89,9 @@ What now exists beyond the original Phase 0 baseline:
 - controller-side and target-side dynamic-address state scaffolding
 - broadcast CCC issue/decode support for `RSTDAA` and `SETAASA`
 - controller-side direct CCC framing with repeated-start sequencing for direct write/read command flows
-- target-side direct CCC decode and transport holdoff for `SETDASA`
-- target-side `GETPID` readback
+- target-side direct CCC decode and transport holdoff for `SETDASA`, `ENEC`, and `DISEC`
+- target-side metadata readback for `GETPID`, `GETBCR`, and `GETDCR`
+- controller-side endpoint policy table for per-target event-mask tracking
 - multi-target `ENTDAA` controller/target baseline with PID/BCR/DCR capture, controller inventory retention, arbitration, repeated assignment, and exhaustion/NACK behavior
 - dedicated regressions for target transport and DAA state behavior
 
@@ -113,9 +118,11 @@ Expected result:
 - `sim-direct-ccc-read` prints `PASS` for direct CCC read framing and response capture
 - `sim-setdasa` prints `PASS` for direct CCC target decode and dynamic-address takeover
 - `sim-getpid` prints `PASS` for direct CCC `GETPID`
+- `sim-getbcrdcr` prints `PASS` for direct CCC `GETBCR` and `GETDCR`
 - `sim-entdaa` prints `PASS` for the single-target `ENTDAA` baseline
 - `sim-entdaa-multi` prints `PASS` for the multi-target `ENTDAA` sequencing baseline
 - `sim-entdaa-stress` prints `PASS` for the four-target `ENTDAA` inventory stress baseline
+- `sim-event-policy-ccc` prints `PASS` for target-side `ENEC`/`DISEC` plus mirrored controller policy tracking
 
 If you only want the original happy-path test:
 
@@ -135,8 +142,8 @@ In short:
 
 - Phase 0 in this repo is a minimal SDR transport bring-up path for Spartan-7.
 - Phase 0.5 is now implemented: controller refactor plus synthesizable target transport.
-- Phase 1 now includes DAA state scaffolding, controller-side PID/BCR/DCR inventory retention, broadcast CCC support (`RSTDAA`, `SETAASA`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`, and regression-backed multi-target `ENTDAA` baselines.
-- The remaining Phase 1 work is broader CCC coverage, deeper controller policy state, reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
+- Phase 1 now includes DAA state scaffolding, controller-side PID/BCR/DCR inventory retention, a first controller policy table, broadcast CCC support (`RSTDAA`, `SETAASA`, `ENEC`, `DISEC`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`/`GETBCR`/`GETDCR`, and regression-backed multi-target `ENTDAA` baselines.
+- The remaining Phase 1 work is reset/status CCC coverage, deeper controller policy state, reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
 ## Vivado Bring-up

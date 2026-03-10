@@ -3,10 +3,16 @@
 module i3c_target_ccc #(
     parameter [6:0]  CCC_ADDR     = 7'h7E,
     parameter [6:0]  STATIC_ADDR  = 7'h2A,
+    parameter [7:0]  CCC_ENEC_BCAST = 8'h00,
+    parameter [7:0]  CCC_DISEC_BCAST= 8'h01,
     parameter [7:0]  CCC_RSTDAA   = 8'h06,
     parameter [7:0]  CCC_ENTDAA   = 8'h07,
     parameter [7:0]  CCC_SETAASA  = 8'h2A,
+    parameter [7:0]  CCC_ENEC_DIRECT = 8'h80,
+    parameter [7:0]  CCC_DISEC_DIRECT= 8'h81,
     parameter [7:0]  CCC_GETPID   = 8'h8D,
+    parameter [7:0]  CCC_GETBCR   = 8'h8E,
+    parameter [7:0]  CCC_GETDCR   = 8'h8F,
     parameter [7:0]  CCC_SETDASA  = 8'h87,
     parameter [7:0]  TARGET_BCR   = 8'h01,
     parameter [7:0]  TARGET_DCR   = 8'h5A
@@ -25,6 +31,7 @@ module i3c_target_ccc #(
     output reg        entdaa_assign_valid,
     output reg [6:0]  entdaa_assign_addr,
     output reg        transport_holdoff,
+    output reg [7:0]  event_enable_mask,
     output reg        ccc_seen,
     output reg [7:0]  last_ccc
 );
@@ -43,10 +50,13 @@ module i3c_target_ccc #(
     localparam [2:0] ACK_DIRECT_DATA   = 3'd4;
     localparam [2:0] ACK_ENTDAA_ADDR   = 3'd5;
     localparam [2:0] ACK_ENTDAA_ASSIGN = 3'd6;
+    localparam [2:0] ACK_BCAST_DATA    = 3'd7;
 
-    localparam [1:0] READ_NONE   = 2'd0;
-    localparam [1:0] READ_GETPID = 2'd1;
-    localparam [1:0] READ_ENTDAA = 2'd2;
+    localparam [2:0] READ_NONE   = 3'd0;
+    localparam [2:0] READ_GETPID = 3'd1;
+    localparam [2:0] READ_ENTDAA = 3'd2;
+    localparam [2:0] READ_GETBCR = 3'd3;
+    localparam [2:0] READ_GETDCR = 3'd4;
 
     reg [2:0] state;
     reg [2:0] ack_context;
@@ -60,12 +70,14 @@ module i3c_target_ccc #(
     reg       current_addr_is_ccc;
     reg       collecting_ccc_code;
     reg       collecting_direct_data;
+    reg       collecting_broadcast_data;
     reg       collecting_entdaa_assign;
     reg       pending_direct_ccc;
+    reg       pending_broadcast_data;
     reg       pending_entdaa;
     reg       entdaa_lost;
     reg       direct_target_match;
-    reg [1:0] read_kind;
+    reg [2:0] read_kind;
     reg [3:0] read_bit_pos;
     reg [3:0] read_byte_idx;
     reg [3:0] read_len;
@@ -97,13 +109,19 @@ module i3c_target_ccc #(
     endfunction
 
     function [7:0] read_byte_value;
-        input [1:0]  kind;
+        input [2:0]  kind;
         input [3:0]  idx;
         input [47:0] pid;
         begin
             case (kind)
                 READ_GETPID: begin
                     read_byte_value = pid_byte(pid, idx[2:0]);
+                end
+                READ_GETBCR: begin
+                    read_byte_value = TARGET_BCR;
+                end
+                READ_GETDCR: begin
+                    read_byte_value = TARGET_DCR;
                 end
                 READ_ENTDAA: begin
                     case (idx)
@@ -140,8 +158,10 @@ module i3c_target_ccc #(
             current_addr_is_ccc     <= 1'b0;
             collecting_ccc_code     <= 1'b0;
             collecting_direct_data  <= 1'b0;
+            collecting_broadcast_data <= 1'b0;
             collecting_entdaa_assign<= 1'b0;
             pending_direct_ccc      <= 1'b0;
+            pending_broadcast_data  <= 1'b0;
             pending_entdaa          <= 1'b0;
             entdaa_lost            <= 1'b0;
             direct_target_match     <= 1'b0;
@@ -151,6 +171,7 @@ module i3c_target_ccc #(
             read_len                <= 4'd0;
             read_shift              <= 8'h00;
             transport_holdoff       <= 1'b0;
+            event_enable_mask       <= 8'h00;
             rstdaa_pulse            <= 1'b0;
             setaasa_pulse           <= 1'b0;
             setdasa_valid           <= 1'b0;
@@ -175,6 +196,7 @@ module i3c_target_ccc #(
             current_addr_is_ccc     <= 1'b0;
             collecting_ccc_code     <= 1'b0;
             collecting_direct_data  <= 1'b0;
+            collecting_broadcast_data <= 1'b0;
             collecting_entdaa_assign<= 1'b0;
             direct_target_match     <= 1'b0;
             entdaa_lost            <= 1'b0;
@@ -201,6 +223,7 @@ module i3c_target_ccc #(
             current_addr_is_ccc     <= 1'b0;
             collecting_ccc_code     <= 1'b0;
             collecting_direct_data  <= 1'b0;
+            collecting_broadcast_data <= 1'b0;
             collecting_entdaa_assign<= 1'b0;
             direct_target_match     <= 1'b0;
             read_kind               <= READ_NONE;
@@ -214,6 +237,7 @@ module i3c_target_ccc #(
             ccc_seen                <= 1'b0;
             transport_holdoff       <= 1'b0;
             pending_direct_ccc      <= 1'b0;
+            pending_broadcast_data  <= 1'b0;
             pending_entdaa          <= 1'b0;
             entdaa_lost            <= 1'b0;
         end else if (scl === 1'b1) begin
@@ -271,8 +295,10 @@ module i3c_target_ccc #(
             current_addr_is_ccc     <= 1'b0;
             collecting_ccc_code     <= 1'b0;
             collecting_direct_data  <= 1'b0;
+            collecting_broadcast_data <= 1'b0;
             collecting_entdaa_assign<= 1'b0;
             pending_direct_ccc      <= 1'b0;
+            pending_broadcast_data  <= 1'b0;
             pending_entdaa          <= 1'b0;
             entdaa_lost            <= 1'b0;
             direct_target_match     <= 1'b0;
@@ -282,6 +308,7 @@ module i3c_target_ccc #(
             read_len                <= 4'd0;
             read_shift              <= 8'h00;
             transport_holdoff       <= 1'b0;
+            event_enable_mask       <= 8'h00;
             rstdaa_pulse            <= 1'b0;
             setaasa_pulse           <= 1'b0;
             setdasa_valid           <= 1'b0;
@@ -323,7 +350,11 @@ module i3c_target_ccc #(
                             ack_context   <= ACK_DIRECT_ADDR;
                             ack_drive_low <= direct_addr_match &&
                                              (((current_ccc == CCC_SETDASA) && !sda) ||
-                                              ((current_ccc == CCC_GETPID) && sda));
+                                              ((current_ccc == CCC_ENEC_DIRECT) && !sda) ||
+                                              ((current_ccc == CCC_DISEC_DIRECT) && !sda) ||
+                                              ((current_ccc == CCC_GETPID) && sda) ||
+                                              ((current_ccc == CCC_GETBCR) && sda) ||
+                                              ((current_ccc == CCC_GETDCR) && sda));
                         end else begin
                             ack_context   <= ACK_CCC_ADDR;
                             ack_drive_low <= ((assembled_byte & 8'hFE) == {CCC_ADDR, 1'b0}) && !sda;
@@ -353,13 +384,21 @@ module i3c_target_ccc #(
                                 state     <= ST_ADDR;
                                 bit_pos   <= 4'd0;
                                 shift_reg <= 8'h00;
+                            end else if (pending_broadcast_data) begin
+                                state                   <= ST_DATA;
+                                collecting_broadcast_data <= 1'b1;
+                                bit_pos                 <= 4'd0;
+                                shift_reg               <= 8'h00;
                             end else begin
                                 state <= ST_IDLE;
                             end
                         end
 
                         ACK_DIRECT_ADDR: begin
-                            if ((current_ccc == CCC_SETDASA) && direct_target_match && !current_rw) begin
+                            if (((current_ccc == CCC_SETDASA) ||
+                                 (current_ccc == CCC_ENEC_DIRECT) ||
+                                 (current_ccc == CCC_DISEC_DIRECT)) &&
+                                direct_target_match && !current_rw) begin
                                 state                  <= ST_DATA;
                                 collecting_direct_data <= 1'b1;
                                 bit_pos                <= 4'd0;
@@ -371,12 +410,30 @@ module i3c_target_ccc #(
                                 read_bit_pos <= 4'd0;
                                 read_len     <= 4'd6;
                                 read_shift   <= pid_byte(provisional_id, 3'd0);
+                            end else if ((current_ccc == CCC_GETBCR) && direct_target_match && current_rw) begin
+                                state        <= ST_READ;
+                                read_kind    <= READ_GETBCR;
+                                read_byte_idx<= 4'd0;
+                                read_bit_pos <= 4'd0;
+                                read_len     <= 4'd1;
+                                read_shift   <= TARGET_BCR;
+                            end else if ((current_ccc == CCC_GETDCR) && direct_target_match && current_rw) begin
+                                state        <= ST_READ;
+                                read_kind    <= READ_GETDCR;
+                                read_byte_idx<= 4'd0;
+                                read_bit_pos <= 4'd0;
+                                read_len     <= 4'd1;
+                                read_shift   <= TARGET_DCR;
                             end else begin
                                 state <= ST_IDLE;
                             end
                         end
 
                         ACK_DIRECT_DATA: begin
+                            state <= ST_IDLE;
+                        end
+
+                        ACK_BCAST_DATA: begin
                             state <= ST_IDLE;
                         end
 
@@ -424,9 +481,19 @@ module i3c_target_ccc #(
                             if (assembled_byte == CCC_SETAASA) begin
                                 setaasa_pulse     <= 1'b1;
                             end
-                            if ((assembled_byte == CCC_SETDASA) || (assembled_byte == CCC_GETPID)) begin
+                            if ((assembled_byte == CCC_SETDASA) ||
+                                (assembled_byte == CCC_ENEC_DIRECT) ||
+                                (assembled_byte == CCC_DISEC_DIRECT) ||
+                                (assembled_byte == CCC_GETPID) ||
+                                (assembled_byte == CCC_GETBCR) ||
+                                (assembled_byte == CCC_GETDCR)) begin
                                 pending_direct_ccc<= 1'b1;
                                 transport_holdoff <= 1'b1;
+                            end
+                            if ((assembled_byte == CCC_ENEC_BCAST) ||
+                                (assembled_byte == CCC_DISEC_BCAST)) begin
+                                pending_broadcast_data <= 1'b1;
+                                transport_holdoff      <= 1'b1;
                             end
                             if ((assembled_byte == CCC_ENTDAA) && !dynamic_addr_valid) begin
                                 pending_entdaa    <= 1'b1;
@@ -435,15 +502,38 @@ module i3c_target_ccc #(
                         end else if (collecting_direct_data) begin
                             collecting_direct_data <= 1'b0;
                             ack_context            <= ACK_DIRECT_DATA;
-                            ack_drive_low          <= direct_target_match && setdasa_data_valid;
+                            ack_drive_low          <= direct_target_match &&
+                                                      (((current_ccc == CCC_SETDASA) && setdasa_data_valid) ||
+                                                       (current_ccc == CCC_ENEC_DIRECT) ||
+                                                       (current_ccc == CCC_DISEC_DIRECT));
 
-                            if ((current_ccc == CCC_SETDASA) &&
-                                direct_target_match &&
-                                setdasa_data_valid) begin
-                                setdasa_valid      <= 1'b1;
-                                setdasa_addr       <= assembled_byte[7:1];
-                                pending_direct_ccc <= 1'b0;
-                                transport_holdoff  <= 1'b0;
+                            if (direct_target_match) begin
+                                if ((current_ccc == CCC_SETDASA) && setdasa_data_valid) begin
+                                    setdasa_valid      <= 1'b1;
+                                    setdasa_addr       <= assembled_byte[7:1];
+                                    pending_direct_ccc <= 1'b0;
+                                    transport_holdoff  <= 1'b0;
+                                end else if (current_ccc == CCC_ENEC_DIRECT) begin
+                                    event_enable_mask  <= event_enable_mask | assembled_byte;
+                                    pending_direct_ccc <= 1'b0;
+                                    transport_holdoff  <= 1'b0;
+                                end else if (current_ccc == CCC_DISEC_DIRECT) begin
+                                    event_enable_mask  <= event_enable_mask & ~assembled_byte;
+                                    pending_direct_ccc <= 1'b0;
+                                    transport_holdoff  <= 1'b0;
+                                end
+                            end
+                        end else if (collecting_broadcast_data) begin
+                            collecting_broadcast_data <= 1'b0;
+                            pending_broadcast_data    <= 1'b0;
+                            ack_context               <= ACK_BCAST_DATA;
+                            ack_drive_low             <= 1'b1;
+                            transport_holdoff         <= 1'b0;
+
+                            if (current_ccc == CCC_ENEC_BCAST) begin
+                                event_enable_mask <= event_enable_mask | assembled_byte;
+                            end else if (current_ccc == CCC_DISEC_BCAST) begin
+                                event_enable_mask <= event_enable_mask & ~assembled_byte;
                             end
                         end else if (collecting_entdaa_assign) begin
                             collecting_entdaa_assign <= 1'b0;

@@ -42,16 +42,21 @@ Implemented and regression-backed:
 - target-side direct CCC decode/response for:
   - `SETDASA`
   - `GETPID`
+  - `GETBCR`
+  - `GETDCR`
+  - `ENEC`
+  - `DISEC`
 - multi-target `ENTDAA` controller/target baseline with:
   - PID/BCR/DCR capture
   - controller-side DAA address assignment
   - controller-side PID/BCR/DCR inventory retention
   - arbitration-driven target ordering
+- controller-side endpoint policy table with per-address event-mask tracking
 
 Not yet implemented:
 
-- broader target-side direct CCC decode/response path
-- broader controller endpoint inventory and policy state beyond PID/BCR/DCR bookkeeping
+- reset/status CCCs beyond the current addressing and event-control subset
+- broader controller endpoint inventory and policy state beyond PID/BCR/DCR plus event-mask bookkeeping
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -101,21 +106,26 @@ Recommended controller file/module breakdown:
    - decodes returned status where needed
    - central place for CCC enumeration and policy wiring
 
-5. `rtl/i3c_ctrl_ibi.v`
+5. `rtl/i3c_ctrl_policy.v`
+   - retains per-endpoint policy state beyond raw discovery inventory
+   - tracks event-enable masks by dynamic address
+   - provides a clean landing point for scheduler and recovery policy growth
+
+6. `rtl/i3c_ctrl_ibi.v`
    - monitors and services IBI flow
    - implements event acceptance policy and software-visible status
 
-6. `rtl/i3c_ctrl_scheduler.v`
+7. `rtl/i3c_ctrl_scheduler.v`
    - round-robin or weighted polling of known endpoints
    - supports per-endpoint polling period and transaction template
    - reserves headroom for urgent event handling
 
-7. `rtl/i3c_ctrl_recovery.v`
+8. `rtl/i3c_ctrl_recovery.v`
    - transaction retry policy
    - stuck-bus detection hooks
    - reset escalation sequencing, including `RSTACT`-driven flows adopted by the profile
 
-8. `rtl/i3c_ctrl_top.v`
+9. `rtl/i3c_ctrl_top.v`
    - integrates all controller blocks
    - exposes a clean host-side control/status interface
    - owns boot state machine
@@ -251,8 +261,11 @@ Current status:
 - controller-side direct CCC framing is implemented and regression-backed
 - target-side `SETDASA` is implemented and regression-backed
 - target-side `GETPID` is implemented and regression-backed
+- target-side `GETBCR` and `GETDCR` are implemented and regression-backed
+- target-side `ENEC` and `DISEC` event-mask updates are implemented and regression-backed
 - multi-target `ENTDAA` sequencing is implemented and regression-backed
-- controller inventory now retains PID/BCR/DCR, while broader policy state remains outstanding
+- controller inventory now retains PID/BCR/DCR
+- controller policy now tracks per-address event-enable masks, while broader policy state remains outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -273,10 +286,11 @@ Target tasks:
 Current status:
 
 - broadcast CCC issue/decode path is implemented
-- supported CCCs today are `RSTDAA` and `SETAASA`
+- supported broadcast CCCs today are `RSTDAA`, `SETAASA`, `ENEC`, and `DISEC`
 - controller-side direct CCC framing is implemented in a standalone sequencer
-- target-side direct CCC decode now supports `SETDASA` and `GETPID`
-- the next CCC milestone is broader direct/broadcast coverage beyond the addressing baseline
+- target-side direct CCC decode now supports `SETDASA`, `GETPID`, `GETBCR`, `GETDCR`, `ENEC`, and `DISEC`
+- controller-side event-mask policy tracking now exists as an initial policy-state layer
+- the next CCC milestone is reset/status coverage beyond the addressing and event-control baseline
 
 Minimum CCC set to lock before coding:
 - addressing support needed for chosen boot flow
@@ -288,7 +302,7 @@ Recommended near-term CCC order:
 
 1. any additional direct CCCs needed by the boot/profile contract
 2. any broadcast CCCs needed before broader recovery/policy work
-3. any event-control CCCs needed before IBI work
+3. event-control CCCs needed before IBI work
 4. reset-policy CCCs beyond `RSTDAA`
 
 Exit criteria:
@@ -424,7 +438,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. expand target-side direct CCC decode/response beyond `SETDASA` and `GETPID`
-2. add richer controller endpoint policy/state beyond PID/BCR/DCR capture
+1. add reset/status CCC coverage beyond the current addressing and event-control subset
+2. add richer controller endpoint policy/state beyond PID/BCR/DCR plus event-mask capture
 3. extend `ENTDAA` stress coverage toward six-endpoint scheduling assumptions
 4. only then expand into reset-policy CCCs and IBI control
