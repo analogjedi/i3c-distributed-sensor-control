@@ -44,6 +44,8 @@ Implemented and regression-backed:
   - `GETPID`
   - `GETBCR`
   - `GETDCR`
+  - `GETSTATUS`
+  - `RSTACT`
   - `ENEC`
   - `DISEC`
 - multi-target `ENTDAA` controller/target baseline with:
@@ -55,8 +57,8 @@ Implemented and regression-backed:
 
 Not yet implemented:
 
-- reset/status CCCs beyond the current addressing and event-control subset
-- broader controller endpoint inventory and policy state beyond PID/BCR/DCR plus event-mask bookkeeping
+- additional reset/status CCCs beyond the current addressing and event-control subset
+- broader controller endpoint inventory and policy state beyond PID/BCR/DCR plus event-mask/reset-action/status bookkeeping
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -108,7 +110,7 @@ Recommended controller file/module breakdown:
 
 5. `rtl/i3c_ctrl_policy.v`
    - retains per-endpoint policy state beyond raw discovery inventory
-   - tracks event-enable masks by dynamic address
+   - tracks event-enable masks, reset action, and last known status by dynamic address
    - provides a clean landing point for scheduler and recovery policy growth
 
 6. `rtl/i3c_ctrl_ibi.v`
@@ -262,10 +264,11 @@ Current status:
 - target-side `SETDASA` is implemented and regression-backed
 - target-side `GETPID` is implemented and regression-backed
 - target-side `GETBCR` and `GETDCR` are implemented and regression-backed
+- target-side `GETSTATUS` and direct `RSTACT` are implemented and regression-backed
 - target-side `ENEC` and `DISEC` event-mask updates are implemented and regression-backed
 - multi-target `ENTDAA` sequencing is implemented and regression-backed
 - controller inventory now retains PID/BCR/DCR
-- controller policy now tracks per-address event-enable masks, while broader policy state remains outstanding
+- controller policy now tracks per-address event-enable masks, reset action, and last status, while broader policy state remains outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -288,9 +291,9 @@ Current status:
 - broadcast CCC issue/decode path is implemented
 - supported broadcast CCCs today are `RSTDAA`, `SETAASA`, `ENEC`, and `DISEC`
 - controller-side direct CCC framing is implemented in a standalone sequencer
-- target-side direct CCC decode now supports `SETDASA`, `GETPID`, `GETBCR`, `GETDCR`, `ENEC`, and `DISEC`
-- controller-side event-mask policy tracking now exists as an initial policy-state layer
-- the next CCC milestone is reset/status coverage beyond the addressing and event-control baseline
+- target-side direct CCC decode now supports `SETDASA`, `GETPID`, `GETBCR`, `GETDCR`, `GETSTATUS`, `RSTACT`, `ENEC`, and `DISEC`
+- controller-side policy tracking now covers event masks, reset action, and last-known status
+- the next CCC milestone is additional recovery/status coverage beyond the current baseline
 
 Minimum CCC set to lock before coding:
 - addressing support needed for chosen boot flow
@@ -438,7 +441,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. add reset/status CCC coverage beyond the current addressing and event-control subset
-2. add richer controller endpoint policy/state beyond PID/BCR/DCR plus event-mask capture
+1. add additional recovery/status CCC coverage beyond the current baseline
+2. add richer controller endpoint policy/state beyond PID/BCR/DCR plus event-mask/reset-action/status capture
 3. extend `ENTDAA` stress coverage toward six-endpoint scheduling assumptions
 4. only then expand into reset-policy CCCs and IBI control

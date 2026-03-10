@@ -24,6 +24,8 @@ module i3c_target_top #(
     output wire       dynamic_addr_valid,
     output wire [47:0] provisional_id,
     output wire [7:0]  event_enable_mask,
+    output wire [7:0]  rstact_action,
+    output wire [15:0] status_word,
     output wire [7:0]  last_ccc
 );
 
@@ -91,6 +93,8 @@ module i3c_target_top #(
         .entdaa_assign_addr(ccc_entdaa_assign_addr),
         .transport_holdoff(ccc_transport_holdoff),
         .event_enable_mask(event_enable_mask),
+        .rstact_action   (rstact_action),
+        .status_word     (status_word),
         .ccc_seen         (ccc_seen),
         .last_ccc         (last_ccc)
     );

@@ -22,12 +22,22 @@ module i3c_ctrl_policy #(
     input  wire [6:0]                     direct_event_addr,
     input  wire [7:0]                     direct_event_mask,
 
+    input  wire                           reset_action_update_valid,
+    input  wire [6:0]                     reset_action_update_addr,
+    input  wire [7:0]                     reset_action_update_value,
+
+    input  wire                           status_update_valid,
+    input  wire [6:0]                     status_update_addr,
+    input  wire [15:0]                    status_update_value,
+
     input  wire [6:0]                     query_addr,
     output reg                            query_found,
     output reg  [47:0]                    query_pid,
     output reg  [7:0]                     query_bcr,
     output reg  [7:0]                     query_dcr,
     output reg  [7:0]                     query_event_mask,
+    output reg  [7:0]                     query_reset_action,
+    output reg  [15:0]                    query_status,
 
     output reg  [$clog2(MAX_ENDPOINTS):0] endpoint_count,
     output reg                            table_full,
@@ -46,6 +56,8 @@ module i3c_ctrl_policy #(
     reg [7:0]  bcr_table       [0:MAX_ENDPOINTS-1];
     reg [7:0]  dcr_table       [0:MAX_ENDPOINTS-1];
     reg [7:0]  event_mask_table[0:MAX_ENDPOINTS-1];
+    reg [7:0]  reset_action_table[0:MAX_ENDPOINTS-1];
+    reg [15:0] status_table    [0:MAX_ENDPOINTS-1];
 
     always @(*) begin
         query_found      = 1'b0;
@@ -53,6 +65,8 @@ module i3c_ctrl_policy #(
         query_bcr        = 8'h00;
         query_dcr        = 8'h00;
         query_event_mask = 8'h00;
+        query_reset_action = 8'h00;
+        query_status     = 16'h0000;
 
         for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
             if ((i < endpoint_count) && (addr_table[i] == query_addr)) begin
@@ -61,6 +75,8 @@ module i3c_ctrl_policy #(
                 query_bcr        = bcr_table[i];
                 query_dcr        = dcr_table[i];
                 query_event_mask = event_mask_table[i];
+                query_reset_action = reset_action_table[i];
+                query_status     = status_table[i];
             end
         end
     end
@@ -78,6 +94,8 @@ module i3c_ctrl_policy #(
                 bcr_table[i]        <= 8'h00;
                 dcr_table[i]        <= 8'h00;
                 event_mask_table[i] <= 8'h00;
+                reset_action_table[i] <= 8'h00;
+                status_table[i]     <= 16'h0000;
             end
         end else begin
             policy_update_miss <= 1'b0;
@@ -94,6 +112,8 @@ module i3c_ctrl_policy #(
                     bcr_table[i]        <= 8'h00;
                     dcr_table[i]        <= 8'h00;
                     event_mask_table[i] <= 8'h00;
+                    reset_action_table[i] <= 8'h00;
+                    status_table[i]     <= 16'h0000;
                 end
             end else if (endpoint_add_valid) begin
                 add_seen_match = 1'b0;
@@ -115,6 +135,8 @@ module i3c_ctrl_policy #(
                         bcr_table[endpoint_count]        <= endpoint_bcr;
                         dcr_table[endpoint_count]        <= endpoint_dcr;
                         event_mask_table[endpoint_count] <= 8'h00;
+                        reset_action_table[endpoint_count] <= 8'h00;
+                        status_table[endpoint_count]     <= 16'h0000;
                         endpoint_count                   <= endpoint_count + 1'b1;
                         table_full                       <= 1'b0;
                         last_event_mask                  <= 8'h00;
@@ -156,6 +178,30 @@ module i3c_ctrl_policy #(
                 if (direct_seen_match) begin
                     last_event_mask <= updated_mask;
                 end else begin
+                    policy_update_miss <= 1'b1;
+                end
+            end else if (reset_action_update_valid) begin
+                direct_seen_match = 1'b0;
+                last_update_addr  <= reset_action_update_addr;
+                for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
+                    if ((i < endpoint_count) && (addr_table[i] == reset_action_update_addr)) begin
+                        reset_action_table[i] <= reset_action_update_value;
+                        direct_seen_match      = 1'b1;
+                    end
+                end
+                if (!direct_seen_match) begin
+                    policy_update_miss <= 1'b1;
+                end
+            end else if (status_update_valid) begin
+                direct_seen_match = 1'b0;
+                last_update_addr  <= status_update_addr;
+                for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
+                    if ((i < endpoint_count) && (addr_table[i] == status_update_addr)) begin
+                        status_table[i] <= status_update_value;
+                        direct_seen_match = 1'b1;
+                    end
+                end
+                if (!direct_seen_match) begin
                     policy_update_miss <= 1'b1;
                 end
             end
