@@ -23,6 +23,7 @@ module tb_i3c_scheduler;
 
     reg        schedule_tick;
     reg        req_accept;
+    reg        req_accept_nack;
 
     wire [3:0] endpoint_count;
     wire [2:0] scan_index;
@@ -87,7 +88,7 @@ module tb_i3c_scheduler;
         .status_update_ok         (status_update_ok),
         .service_result_valid     (req_accept),
         .service_result_addr      (req_addr),
-        .service_result_nack      (1'b0),
+        .service_result_nack      (req_accept_nack),
         .query_addr               (query_addr),
         .query_found              (query_found),
         .query_pid                (),
@@ -174,6 +175,7 @@ module tb_i3c_scheduler;
         status_update_ok    = 1'b0;
         schedule_tick       = 1'b0;
         req_accept          = 1'b0;
+        req_accept_nack     = 1'b0;
         query_addr          = 7'h00;
 
         $dumpfile("tb_i3c_scheduler.vcd");
@@ -233,9 +235,25 @@ module tb_i3c_scheduler;
         check_policy_state(7'h12, 2'd1, 1'b1, 1'b0, 8'd1, 16'd1, 16'd1, 16'd0, 8'd0, 1'b1);
         check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd3, 16'd2, 16'd2, 16'd0, 8'd0, 1'b0);
 
+        set_service_period(7'h13, 8'd1);
         set_enable(7'h10, 1'b0);
         set_enable(7'h11, 1'b0);
         set_enable(7'h12, 1'b0);
+        expect_schedule(7'h13, 2'd2);
+        accept_schedule_nack;
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd3, 16'd2, 16'd1, 8'd1, 1'b0);
+        expect_schedule(7'h13, 2'd2);
+        accept_schedule_nack;
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b1, 8'd1, 16'd4, 16'd2, 16'd2, 8'd2, 1'b0);
+        @(posedge clk);
+        expect_missed_slot;
+        set_status(7'h13, 16'h600D, 1'b1);
+        @(posedge clk);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd4, 16'd2, 16'd2, 8'd0, 1'b1);
+        expect_schedule(7'h13, 2'd2);
+        accept_schedule;
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd5, 16'd3, 16'd2, 8'd0, 1'b0);
+
         set_enable(7'h13, 1'b0);
         @(posedge clk);
         expect_missed_slot;
@@ -335,8 +353,21 @@ module tb_i3c_scheduler;
         begin
             @(posedge clk);
             req_accept <= 1'b1;
+            req_accept_nack <= 1'b0;
             @(posedge clk);
             req_accept <= 1'b0;
+            req_accept_nack <= 1'b0;
+        end
+    endtask
+
+    task accept_schedule_nack;
+        begin
+            @(posedge clk);
+            req_accept <= 1'b1;
+            req_accept_nack <= 1'b1;
+            @(posedge clk);
+            req_accept <= 1'b0;
+            req_accept_nack <= 1'b0;
         end
     endtask
 

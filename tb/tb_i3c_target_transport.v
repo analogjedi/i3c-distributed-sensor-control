@@ -70,7 +70,7 @@ module tb_i3c_target_transport;
         .sda        (sda_line),
         .suppress   (1'b0),
         .target_addr(7'h2A),
-        .read_data  (target_read_data),
+        .read_data  ({24'h000000, target_read_data}),
         .write_data (target_write_data),
         .write_valid(target_write_valid),
         .read_valid (target_read_valid),

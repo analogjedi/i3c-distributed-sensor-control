@@ -207,7 +207,7 @@ module tb_i3c_event_policy_ccc;
         .clear_dynamic_addr      (clear_dynamic_addr),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid),
         .assign_dynamic_addr     (assign_dynamic_addr),
-        .read_data               (read_data),
+        .read_data               ({24'h000000, read_data}),
         .write_data              (write_data),
         .write_valid             (write_valid),
         .read_valid              (read_valid),

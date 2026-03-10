@@ -1,7 +1,8 @@
 `timescale 1ns/1ps
 
 module i3c_ctrl_policy #(
-    parameter integer MAX_ENDPOINTS = 8
+    parameter integer MAX_ENDPOINTS = 8,
+    parameter integer AUTO_FAULT_THRESHOLD = 2
 ) (
     input  wire                           default_endpoint_enable,
     input  wire [7:0]                     default_service_period,
@@ -82,6 +83,7 @@ module i3c_ctrl_policy #(
 );
 
     integer i;
+    localparam [7:0] AUTO_FAULT_THRESHOLD_U8 = AUTO_FAULT_THRESHOLD;
     reg       add_seen_match;
     reg       direct_seen_match;
     reg [7:0] updated_mask;
@@ -364,6 +366,9 @@ module i3c_ctrl_policy #(
                         status_table[i] <= status_update_value;
                         last_seen_ok_table[i] <= status_update_ok;
                         health_fault_table[i] <= !status_update_ok;
+                        if (status_update_ok) begin
+                            consecutive_failures_table[i] <= 8'h00;
+                        end
                         direct_seen_match = 1'b1;
                     end
                 end
@@ -380,9 +385,14 @@ module i3c_ctrl_policy #(
                         if (service_result_nack) begin
                             error_count_table[i] <= error_count_table[i] + 1'b1;
                             consecutive_failures_table[i] <= consecutive_failures_table[i] + 1'b1;
+                            last_seen_ok_table[i] <= 1'b0;
+                            if ((consecutive_failures_table[i] + 1'b1) >= AUTO_FAULT_THRESHOLD_U8) begin
+                                health_fault_table[i] <= 1'b1;
+                            end
                         end else begin
                             success_count_table[i] <= success_count_table[i] + 1'b1;
                             consecutive_failures_table[i] <= 8'h00;
+                            last_seen_ok_table[i] <= 1'b1;
                         end
                         direct_seen_match = 1'b1;
                     end

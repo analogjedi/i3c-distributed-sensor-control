@@ -43,7 +43,8 @@ module tb_i3c_ctrl_top_service;
     wire [6:0] service_rsp_addr;
     wire [1:0] service_rsp_class;
     wire [2:0] service_rsp_index;
-    wire [7:0] service_rsp_rdata;
+    wire [7:0] service_rsp_rx_count;
+    wire [31:0] service_rsp_rdata;
     wire       service_busy;
 
     wire scl_o;
@@ -62,11 +63,23 @@ module tb_i3c_ctrl_top_service;
     reg        assign_dynamic_addr_valid_3;
     reg  [6:0] assign_dynamic_addr_3;
 
-    reg  [7:0] read_data_0;
-    reg  [7:0] read_data_1;
-    reg  [7:0] read_data_2;
-    reg  [7:0] read_data_3;
+    reg  [31:0] read_data_0;
+    reg  [31:0] read_data_1;
+    reg  [31:0] read_data_2;
+    reg  [31:0] read_data_3;
 
+    wire [7:0] write_data_0;
+    wire [7:0] write_data_1;
+    wire [7:0] write_data_2;
+    wire [7:0] write_data_3;
+    wire       write_valid_0;
+    wire       write_valid_1;
+    wire       write_valid_2;
+    wire       write_valid_3;
+    wire [7:0] register_selector_0;
+    wire [7:0] register_selector_1;
+    wire [7:0] register_selector_2;
+    wire [7:0] register_selector_3;
     wire       read_valid_0;
     wire       read_valid_1;
     wire       read_valid_2;
@@ -79,6 +92,10 @@ module tb_i3c_ctrl_top_service;
     reg        saw_read_1;
     reg        saw_read_2;
     reg        saw_read_3;
+    reg [7:0]  write_count_0;
+    reg [7:0]  write_count_1;
+    reg [7:0]  write_count_2;
+    reg [7:0]  write_count_3;
 
     pullup (scl_line);
     pullup (sda_line);
@@ -153,6 +170,7 @@ module tb_i3c_ctrl_top_service;
         .service_rsp_addr         (service_rsp_addr),
         .service_rsp_class        (service_rsp_class),
         .service_rsp_index        (service_rsp_index),
+        .service_rsp_rx_count     (service_rsp_rx_count),
         .service_rsp_rdata        (service_rsp_rdata),
         .service_busy             (service_busy),
         .scl_o                    (scl_o),
@@ -176,8 +194,9 @@ module tb_i3c_ctrl_top_service;
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid_0),
         .assign_dynamic_addr     (assign_dynamic_addr_0),
         .read_data               (read_data_0),
-        .write_data              (),
-        .write_valid             (),
+        .write_data              (write_data_0),
+        .write_valid             (write_valid_0),
+        .register_selector       (register_selector_0),
         .read_valid              (read_valid_0),
         .selected                (),
         .active_addr             (active_addr_0),
@@ -203,8 +222,9 @@ module tb_i3c_ctrl_top_service;
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid_1),
         .assign_dynamic_addr     (assign_dynamic_addr_1),
         .read_data               (read_data_1),
-        .write_data              (),
-        .write_valid             (),
+        .write_data              (write_data_1),
+        .write_valid             (write_valid_1),
+        .register_selector       (register_selector_1),
         .read_valid              (read_valid_1),
         .selected                (),
         .active_addr             (active_addr_1),
@@ -230,8 +250,9 @@ module tb_i3c_ctrl_top_service;
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid_2),
         .assign_dynamic_addr     (assign_dynamic_addr_2),
         .read_data               (read_data_2),
-        .write_data              (),
-        .write_valid             (),
+        .write_data              (write_data_2),
+        .write_valid             (write_valid_2),
+        .register_selector       (register_selector_2),
         .read_valid              (read_valid_2),
         .selected                (),
         .active_addr             (active_addr_2),
@@ -257,8 +278,9 @@ module tb_i3c_ctrl_top_service;
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid_3),
         .assign_dynamic_addr     (assign_dynamic_addr_3),
         .read_data               (read_data_3),
-        .write_data              (),
-        .write_valid             (),
+        .write_data              (write_data_3),
+        .write_valid             (write_valid_3),
+        .register_selector       (register_selector_3),
         .read_valid              (read_valid_3),
         .selected                (),
         .active_addr             (active_addr_3),
@@ -283,6 +305,38 @@ module tb_i3c_ctrl_top_service;
             if (read_valid_1) saw_read_1 <= 1'b1;
             if (read_valid_2) saw_read_2 <= 1'b1;
             if (read_valid_3) saw_read_3 <= 1'b1;
+        end
+    end
+
+    always @(posedge write_valid_0 or negedge rst_n) begin
+        if (!rst_n) begin
+            write_count_0 <= 8'd0;
+        end else begin
+            write_count_0 <= write_count_0 + 1'b1;
+        end
+    end
+
+    always @(posedge write_valid_1 or negedge rst_n) begin
+        if (!rst_n) begin
+            write_count_1 <= 8'd0;
+        end else begin
+            write_count_1 <= write_count_1 + 1'b1;
+        end
+    end
+
+    always @(posedge write_valid_2 or negedge rst_n) begin
+        if (!rst_n) begin
+            write_count_2 <= 8'd0;
+        end else begin
+            write_count_2 <= write_count_2 + 1'b1;
+        end
+    end
+
+    always @(posedge write_valid_3 or negedge rst_n) begin
+        if (!rst_n) begin
+            write_count_3 <= 8'd0;
+        end else begin
+            write_count_3 <= write_count_3 + 1'b1;
         end
     end
 
@@ -313,14 +367,18 @@ module tb_i3c_ctrl_top_service;
         assign_dynamic_addr_2 = 7'h00;
         assign_dynamic_addr_valid_3 = 1'b0;
         assign_dynamic_addr_3 = 7'h00;
-        read_data_0 = 8'hA0;
-        read_data_1 = 8'hB1;
-        read_data_2 = 8'hC2;
-        read_data_3 = 8'hD3;
+        read_data_0 = 32'hA3A2A1A0;
+        read_data_1 = 32'h00B3B2B1;
+        read_data_2 = 32'h0000C2C1;
+        read_data_3 = 32'h00D3D2D1;
         saw_read_0 = 1'b0;
         saw_read_1 = 1'b0;
         saw_read_2 = 1'b0;
         saw_read_3 = 1'b0;
+        write_count_0 = 8'd0;
+        write_count_1 = 8'd0;
+        write_count_2 = 8'd0;
+        write_count_3 = 8'd0;
 
         $dumpfile("tb_i3c_ctrl_top_service.vcd");
         $dumpvars(0, tb_i3c_ctrl_top_service);
@@ -346,8 +404,10 @@ module tb_i3c_ctrl_top_service;
         check_policy_state(7'h11, 2'd2, 1'b0, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
         check_policy_state(7'h12, 2'd1, 1'b1, 1'b1, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
 
-        expect_service(7'h10, 2'd3, 8'hA0);
-        expect_service(7'h13, 2'd2, 8'hD3);
+        expect_service(7'h10, 2'd3, 8'd4, 32'hA3A2A1A0);
+        check_selector_state(0, 8'd1, 8'h30);
+        expect_service(7'h13, 2'd2, 8'd3, 32'h00D3D2D1);
+        check_selector_state(3, 8'd1, 8'h20);
         check_policy_state(7'h10, 2'd3, 1'b1, 1'b0, 8'd2, 16'd1, 16'd1, 16'd0, 8'd0, 1'b0);
         check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd3, 16'd1, 16'd1, 16'd0, 8'd0, 1'b0);
 
@@ -356,10 +416,14 @@ module tb_i3c_ctrl_top_service;
         check_policy_state(7'h11, 2'd2, 1'b1, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
         check_policy_state(7'h12, 2'd1, 1'b1, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
 
-        expect_service(7'h10, 2'd3, 8'hA0);
-        expect_service(7'h11, 2'd2, 8'hB1);
-        expect_service(7'h12, 2'd1, 8'hC2);
-        expect_service(7'h13, 2'd2, 8'hD3);
+        expect_service(7'h10, 2'd3, 8'd4, 32'hA3A2A1A0);
+        check_selector_state(0, 8'd2, 8'h30);
+        expect_service(7'h11, 2'd2, 8'd3, 32'h00B3B2B1);
+        check_selector_state(1, 8'd1, 8'h20);
+        expect_service(7'h12, 2'd1, 8'd2, 32'h0000C2C1);
+        check_selector_state(2, 8'd1, 8'h10);
+        expect_service(7'h13, 2'd2, 8'd3, 32'h00D3D2D1);
+        check_selector_state(3, 8'd2, 8'h20);
         check_policy_state(7'h10, 2'd3, 1'b1, 1'b0, 8'd2, 16'd2, 16'd2, 16'd0, 8'd0, 1'b1);
         check_policy_state(7'h11, 2'd2, 1'b1, 1'b0, 8'd1, 16'd1, 16'd1, 16'd0, 8'd0, 1'b1);
         check_policy_state(7'h12, 2'd1, 1'b1, 1'b0, 8'd1, 16'd1, 16'd1, 16'd0, 8'd0, 1'b1);
@@ -371,7 +435,19 @@ module tb_i3c_ctrl_top_service;
         set_enable(7'h11, 1'b0);
         set_enable(7'h12, 1'b0);
         expect_service_nack(7'h13, 2'd2);
+        check_selector_state(3, 8'd2, 8'h20);
         check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd3, 16'd2, 16'd1, 8'd1, 1'b0);
+        expect_service_nack(7'h13, 2'd2);
+        check_selector_state(3, 8'd2, 8'h20);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b1, 8'd1, 16'd4, 16'd2, 16'd2, 8'd2, 1'b0);
+        expect_missed_slot;
+
+        assign_target_addr(3, 7'h13);
+        set_fault(7'h13, 1'b0);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd4, 16'd2, 16'd2, 8'd0, 1'b1);
+        expect_service(7'h13, 2'd2, 8'd3, 32'h00D3D2D1);
+        check_selector_state(3, 8'd3, 8'h20);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd5, 16'd3, 16'd2, 8'd0, 1'b0);
 
         if (!saw_read_0 || !saw_read_1 || !saw_read_2 || !saw_read_3) begin
             $display("FAIL: expected each target to observe scheduled read service");
@@ -541,22 +617,25 @@ module tb_i3c_ctrl_top_service;
     task expect_service;
         input [6:0] expected_addr;
         input [1:0] expected_class;
-        input [7:0] expected_data;
+        input [7:0] expected_count;
+        input [31:0] expected_data;
         integer wait_cycles;
         begin
             pulse_schedule_tick;
             wait_cycles = 0;
-            while (!service_rsp_valid && (wait_cycles < 5000)) begin
+            while (!service_rsp_valid && (wait_cycles < 12000)) begin
                 @(posedge clk);
                 wait_cycles = wait_cycles + 1;
             end
             if (!service_rsp_valid || service_rsp_nack ||
                 (service_rsp_addr != expected_addr) ||
                 (service_rsp_class != expected_class) ||
+                (service_rsp_rx_count != expected_count) ||
                 (service_rsp_rdata != expected_data)) begin
-                $display("FAIL: service mismatch valid=%0d nack=%0d addr=0x%02h class=%0d data=0x%02h expected_addr=0x%02h expected_class=%0d expected_data=0x%02h",
+                $display("FAIL: service mismatch valid=%0d nack=%0d addr=0x%02h class=%0d count=%0d data=0x%08h expected_addr=0x%02h expected_class=%0d expected_count=%0d expected_data=0x%08h",
                          service_rsp_valid, service_rsp_nack, service_rsp_addr, service_rsp_class,
-                         service_rsp_rdata, expected_addr, expected_class, expected_data);
+                         service_rsp_rx_count, service_rsp_rdata, expected_addr, expected_class,
+                         expected_count, expected_data);
                 $finish(1);
             end
         end
@@ -569,7 +648,7 @@ module tb_i3c_ctrl_top_service;
         begin
             pulse_schedule_tick;
             wait_cycles = 0;
-            while (!service_rsp_valid && (wait_cycles < 5000)) begin
+            while (!service_rsp_valid && (wait_cycles < 12000)) begin
                 @(posedge clk);
                 wait_cycles = wait_cycles + 1;
             end
@@ -597,6 +676,44 @@ module tb_i3c_ctrl_top_service;
                 $display("FAIL: expected scheduler_missed_slot when all endpoints disabled");
                 $finish(1);
             end
+        end
+    endtask
+
+    task check_selector_state;
+        input integer target_id;
+        input [7:0] expected_count;
+        input [7:0] expected_selector;
+        begin
+            case (target_id)
+                0: begin
+                    if ((write_count_0 != expected_count) || (register_selector_0 != expected_selector)) begin
+                        $display("FAIL: selector mismatch target0 count=%0d selector=0x%02h expected_count=%0d expected_selector=0x%02h",
+                                 write_count_0, register_selector_0, expected_count, expected_selector);
+                        $finish(1);
+                    end
+                end
+                1: begin
+                    if ((write_count_1 != expected_count) || (register_selector_1 != expected_selector)) begin
+                        $display("FAIL: selector mismatch target1 count=%0d selector=0x%02h expected_count=%0d expected_selector=0x%02h",
+                                 write_count_1, register_selector_1, expected_count, expected_selector);
+                        $finish(1);
+                    end
+                end
+                2: begin
+                    if ((write_count_2 != expected_count) || (register_selector_2 != expected_selector)) begin
+                        $display("FAIL: selector mismatch target2 count=%0d selector=0x%02h expected_count=%0d expected_selector=0x%02h",
+                                 write_count_2, register_selector_2, expected_count, expected_selector);
+                        $finish(1);
+                    end
+                end
+                3: begin
+                    if ((write_count_3 != expected_count) || (register_selector_3 != expected_selector)) begin
+                        $display("FAIL: selector mismatch target3 count=%0d selector=0x%02h expected_count=%0d expected_selector=0x%02h",
+                                 write_count_3, register_selector_3, expected_count, expected_selector);
+                        $finish(1);
+                    end
+                end
+            endcase
         end
     endtask
 

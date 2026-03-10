@@ -2,8 +2,10 @@
 
 module tb_i3c_reset_status_policy;
 
-    localparam [7:0] CCC_GETSTATUS    = 8'h90;
-    localparam [7:0] CCC_RSTACT_DIRECT= 8'h9A;
+    localparam [7:0] CCC_RSTDAA        = 8'h06;
+    localparam [7:0] CCC_SETAASA       = 8'h2A;
+    localparam [7:0] CCC_GETSTATUS     = 8'h90;
+    localparam [7:0] CCC_RSTACT_DIRECT = 8'h9A;
 
     reg clk;
     reg rst_n;
@@ -26,6 +28,30 @@ module tb_i3c_reset_status_policy;
     wire dccc_scl_oe;
     wire dccc_sda_o;
     wire dccc_sda_oe;
+
+    reg        ccc_valid;
+    wire       ccc_ready;
+    reg [7:0]  ccc_code;
+    reg [7:0]  ccc_data_len;
+    reg [55:0] ccc_data;
+    wire       ccc_done;
+    wire       ccc_nack;
+    wire       ccc_txn_req_valid;
+    wire       ccc_txn_req_ready;
+    wire [6:0] ccc_txn_req_addr;
+    wire       ccc_txn_req_read;
+    wire [7:0] ccc_txn_req_tx_len;
+    wire [7:0] ccc_txn_req_rx_len;
+    wire [63:0] ccc_txn_req_wdata;
+    wire       txn_rsp_valid;
+    wire       txn_rsp_nack;
+    wire [7:0] txn_rsp_rx_count;
+    wire [31:0] txn_rsp_rdata;
+    wire       txn_busy;
+    wire       txn_scl_o;
+    wire       txn_scl_oe;
+    wire       txn_sda_o;
+    wire       txn_sda_oe;
     wire sda_i;
 
     wire scl_line;
@@ -74,9 +100,62 @@ module tb_i3c_reset_status_policy;
     pullup (scl_line);
     pullup (sda_line);
 
-    assign scl_line = dccc_scl_oe ? dccc_scl_o : 1'bz;
-    assign sda_line = dccc_sda_oe ? dccc_sda_o : 1'bz;
+    assign scl_line = dccc_busy ? (dccc_scl_oe ? dccc_scl_o : 1'bz) :
+                                  (txn_scl_oe ? txn_scl_o : 1'bz);
+    assign sda_line = dccc_busy ? (dccc_sda_oe ? dccc_sda_o : 1'bz) :
+                                  (txn_sda_oe ? txn_sda_o : 1'bz);
     assign sda_i    = sda_line;
+
+    i3c_ctrl_txn_layer #(
+        .CLK_FREQ_HZ(100_000_000),
+        .I3C_SDR_HZ(1_000_000),
+        .PUSH_PULL_DATA(1),
+        .MAX_TX_BYTES(8),
+        .MAX_RX_BYTES(4)
+    ) txn (
+        .clk            (clk),
+        .rst_n          (rst_n),
+        .txn_req_valid  (ccc_txn_req_valid),
+        .txn_req_ready  (ccc_txn_req_ready),
+        .txn_req_addr   (ccc_txn_req_addr),
+        .txn_req_read   (ccc_txn_req_read),
+        .txn_req_tx_len (ccc_txn_req_tx_len),
+        .txn_req_rx_len (ccc_txn_req_rx_len),
+        .txn_req_wdata  (ccc_txn_req_wdata),
+        .txn_rsp_valid  (txn_rsp_valid),
+        .txn_rsp_nack   (txn_rsp_nack),
+        .txn_rsp_rx_count(txn_rsp_rx_count),
+        .txn_rsp_rdata  (txn_rsp_rdata),
+        .busy           (txn_busy),
+        .scl_o          (txn_scl_o),
+        .scl_oe         (txn_scl_oe),
+        .sda_o          (txn_sda_o),
+        .sda_oe         (txn_sda_oe),
+        .sda_i          (sda_i)
+    );
+
+    i3c_ctrl_ccc #(
+        .MAX_TX_BYTES(8)
+    ) ccc (
+        .clk          (clk),
+        .rst_n        (rst_n),
+        .ccc_valid    (ccc_valid),
+        .ccc_ready    (ccc_ready),
+        .ccc_code     (ccc_code),
+        .ccc_data_len (ccc_data_len),
+        .ccc_data     (ccc_data),
+        .ccc_done     (ccc_done),
+        .ccc_nack     (ccc_nack),
+        .txn_req_valid(ccc_txn_req_valid),
+        .txn_req_ready(ccc_txn_req_ready),
+        .txn_req_addr (ccc_txn_req_addr),
+        .txn_req_read (ccc_txn_req_read),
+        .txn_req_tx_len(ccc_txn_req_tx_len),
+        .txn_req_rx_len(ccc_txn_req_rx_len),
+        .txn_req_wdata(ccc_txn_req_wdata),
+        .txn_rsp_valid(txn_rsp_valid),
+        .txn_rsp_nack (txn_rsp_nack)
+    );
 
     i3c_ctrl_direct_ccc #(
         .CLK_FREQ_HZ(100_000_000),
@@ -120,7 +199,7 @@ module tb_i3c_reset_status_policy;
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid),
         .assign_dynamic_addr     (assign_dynamic_addr),
-        .read_data               (read_data),
+        .read_data               ({24'h000000, read_data}),
         .write_data              (write_data),
         .write_valid             (write_valid),
         .read_valid              (read_valid),
@@ -216,6 +295,10 @@ module tb_i3c_reset_status_policy;
         dccc_tx_len             = 8'd0;
         dccc_rx_len             = 8'd0;
         dccc_tx_data            = 32'h0;
+        ccc_valid               = 1'b0;
+        ccc_code                = 8'h00;
+        ccc_data_len            = 8'd0;
+        ccc_data                = 56'h0;
         assign_dynamic_addr_valid = 1'b0;
         assign_dynamic_addr     = 7'h00;
         read_data               = 8'h5C;
@@ -272,6 +355,48 @@ module tb_i3c_reset_status_policy;
             (query_pid != 48'h1122_3344_5566) || (query_bcr != 8'h21) ||
             (query_dcr != 8'hC4) || (query_event_mask != 8'h00)) begin
             $display("FAIL: controller status policy mismatch");
+            $finish(1);
+        end
+
+        issue_broadcast_ccc(CCC_RSTDAA);
+        repeat (4) @(posedge clk);
+        if (ccc_nack || (last_ccc != CCC_RSTDAA) ||
+            dynamic_addr_valid || (active_addr != 7'h2A) ||
+            (status_word != 16'h00A0)) begin
+            $display("FAIL: RSTDAA recovery mismatch nack=%0d last_ccc=0x%02h dyn=%0d active=0x%02h status=0x%04h",
+                     ccc_nack, last_ccc, dynamic_addr_valid, active_addr, status_word);
+            $finish(1);
+        end
+
+        mirror_status(7'h33, status_word);
+        if (policy_update_miss || (query_status != 16'h00A0) ||
+            (query_reset_action != 8'h05)) begin
+            $display("FAIL: controller recovery status mirror mismatch after RSTDAA");
+            $finish(1);
+        end
+
+        issue_broadcast_ccc(CCC_SETAASA);
+        repeat (4) @(posedge clk);
+        if (ccc_nack || (last_ccc != CCC_SETAASA) ||
+            !dynamic_addr_valid || (active_addr != 7'h2A) ||
+            (status_word != 16'h00A1)) begin
+            $display("FAIL: SETAASA recovery mismatch nack=%0d last_ccc=0x%02h dyn=%0d active=0x%02h status=0x%04h",
+                     ccc_nack, last_ccc, dynamic_addr_valid, active_addr, status_word);
+            $finish(1);
+        end
+
+        issue_direct_read_status(7'h2A);
+        if (dccc_rsp_nack || (last_ccc != CCC_GETSTATUS) ||
+            (dccc_rsp_rx_count != 8'd2) || (dccc_rsp_rdata != 16'hA100)) begin
+            $display("FAIL: GETSTATUS after SETAASA mismatch nack=%0d last_ccc=0x%02h rx_count=%0d data=0x%04h",
+                     dccc_rsp_nack, last_ccc, dccc_rsp_rx_count, dccc_rsp_rdata);
+            $finish(1);
+        end
+
+        mirror_status(7'h33, {dccc_rsp_rdata[7:0], dccc_rsp_rdata[15:8]});
+        if (policy_update_miss || (query_status != 16'h00A1) ||
+            (query_reset_action != 8'h05)) begin
+            $display("FAIL: controller recovery status mirror mismatch after SETAASA");
             $finish(1);
         end
 
@@ -379,6 +504,32 @@ module tb_i3c_reset_status_policy;
             @(posedge clk);
             dccc_cmd_valid   <= 1'b0;
             while (!dccc_rsp_valid) @(posedge clk);
+        end
+    endtask
+
+    task issue_direct_read_status_expect_nack;
+        input [6:0] addr;
+        begin
+            issue_direct_read_status(addr);
+            if (!dccc_rsp_nack) begin
+                $display("FAIL: expected GETSTATUS NACK for addr=0x%02h", addr);
+                $finish(1);
+            end
+        end
+    endtask
+
+    task issue_broadcast_ccc;
+        input [7:0] code;
+        begin
+            @(posedge clk);
+            while (!ccc_ready || dccc_busy) @(posedge clk);
+            ccc_code     <= code;
+            ccc_data_len <= 8'd0;
+            ccc_data     <= 56'h0;
+            ccc_valid    <= 1'b1;
+            @(posedge clk);
+            ccc_valid    <= 1'b0;
+            while (!ccc_done) @(posedge clk);
         end
     endtask
 

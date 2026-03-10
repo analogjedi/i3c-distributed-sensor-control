@@ -282,9 +282,9 @@ module i3c_bus_engine #(
                     scl_o  <= 1'b0;
                     scl_oe <= 1'b1;
                     if (PUSH_PULL_DATA) begin
-                        set_sda(1'b1, 1'b0);
+                        set_sda(((rx_idx + 1'b1) < rx_len_lat) ? 1'b0 : 1'b1, 1'b0);
                     end else begin
-                        set_sda(1'b1, 1'b1);
+                        set_sda(((rx_idx + 1'b1) < rx_len_lat) ? 1'b0 : 1'b1, 1'b1);
                     end
                     if (tick) begin
                         state <= ST_MASTER_ACK_H;
@@ -295,9 +295,9 @@ module i3c_bus_engine #(
                     scl_o  <= 1'b1;
                     scl_oe <= 1'b1;
                     if (PUSH_PULL_DATA) begin
-                        set_sda(1'b1, 1'b0);
+                        set_sda(((rx_idx + 1'b1) < rx_len_lat) ? 1'b0 : 1'b1, 1'b0);
                     end else begin
-                        set_sda(1'b1, 1'b1);
+                        set_sda(((rx_idx + 1'b1) < rx_len_lat) ? 1'b0 : 1'b1, 1'b1);
                     end
                     if (tick) begin
                         if ((rx_idx + 1'b1) < rx_len_lat) begin

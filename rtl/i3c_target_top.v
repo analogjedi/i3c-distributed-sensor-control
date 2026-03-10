@@ -1,6 +1,7 @@
 `timescale 1ns/1ps
 
 module i3c_target_top #(
+    parameter integer MAX_READ_BYTES = 4,
     parameter [6:0]  STATIC_ADDR    = 7'h2A,
     parameter [47:0] PROVISIONAL_ID = 48'h1234_5678_9ABC,
     parameter [7:0]  TARGET_BCR     = 8'h01,
@@ -15,9 +16,10 @@ module i3c_target_top #(
     input  wire       assign_dynamic_addr_valid,
     input  wire [6:0] assign_dynamic_addr,
 
-    input  wire [7:0] read_data,
+    input  wire [8*MAX_READ_BYTES-1:0] read_data,
     output wire [7:0] write_data,
     output wire       write_valid,
+    output wire [7:0] register_selector,
     output wire       read_valid,
     output wire       selected,
     output wire [6:0] active_addr,
@@ -39,6 +41,9 @@ module i3c_target_top #(
     wire ccc_seen;
     wire target_assign_dynamic_addr_valid;
     wire [6:0] target_assign_dynamic_addr;
+    reg  [7:0] register_selector_r;
+
+    assign register_selector = register_selector_r;
 
     assign target_assign_dynamic_addr_valid = assign_dynamic_addr_valid |
                                               ccc_setdasa_valid |
@@ -61,7 +66,9 @@ module i3c_target_top #(
         .provisional_id          (provisional_id)
     );
 
-    i3c_target_transport u_target_transport (
+    i3c_target_transport #(
+        .MAX_READ_BYTES(MAX_READ_BYTES)
+    ) u_target_transport (
         .rst_n      (rst_n),
         .scl        (scl),
         .sda        (sda),
@@ -73,6 +80,14 @@ module i3c_target_top #(
         .selected   (selected),
         .target_addr(active_addr)
     );
+
+    always @(posedge write_valid or negedge rst_n) begin
+        if (!rst_n) begin
+            register_selector_r <= 8'h00;
+        end else begin
+            register_selector_r <= write_data;
+        end
+    end
 
     i3c_target_ccc #(
         .STATIC_ADDR(STATIC_ADDR),

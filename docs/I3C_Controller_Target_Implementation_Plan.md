@@ -63,12 +63,13 @@ Implemented and regression-backed:
   - last status
   - basic health bits
   - service count, success count, error count, consecutive failures, and last service tag
-- cadence-aware round-robin scheduler path that consumes integrated policy state and drives real one-byte read transactions through `rtl/i3c_ctrl_top.v`
+- cadence-aware round-robin scheduler path that consumes integrated policy state and drives class-sized multi-byte read transactions through `rtl/i3c_ctrl_top.v`
+- repeated-failure service fault latching with explicit recovery clear through controller policy/status updates
 
 Not yet implemented:
 
 - additional reset/status CCCs beyond the current addressing and event-control subset
-- broader scheduled transaction templates beyond the current one-byte read baseline
+- deeper scheduled service templates beyond the current class-specific write-then-read selector plus class-sized read baseline
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -280,8 +281,10 @@ Current status:
 - controller inventory now retains PID/BCR/DCR
 - DAA discovery now auto-populates controller policy records
 - controller policy now tracks per-address class, default enable state, service period, due-state eligibility, event-enable masks, reset action, last status, basic health bits, service count, success count, error count, consecutive failures, and last service tag
-- a cadence-aware controller scheduler path now walks integrated policy state, emits round-robin service requests only for due endpoints, and drives real one-byte read transactions through `rtl/i3c_ctrl_top.v`
+- repeated scheduled-service NACKs now auto-latch endpoint health faults until explicit clear
+- a cadence-aware controller scheduler path now walks integrated policy state, emits round-robin service requests only for due endpoints, and drives class-specific write-then-read service templates plus class-sized multi-byte reads through `rtl/i3c_ctrl_top.v`
 - `ENTDAA` stress coverage now reaches a six-endpoint exact-fit baseline
+- target-side recovery/status regressions now cover `RSTACT`, `GETSTATUS`, `RSTDAA`, and `SETAASA` across mirrored controller policy tracking
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -306,7 +309,7 @@ Current status:
 - controller-side direct CCC framing is implemented in a standalone sequencer
 - target-side direct CCC decode now supports `SETDASA`, `GETPID`, `GETBCR`, `GETDCR`, `GETSTATUS`, `RSTACT`, `ENEC`, and `DISEC`
 - controller-side policy tracking now covers event masks, reset action, and last-known status
-- the next CCC milestone is additional recovery/status coverage beyond the current baseline
+- the next CCC milestone is deeper reset/error sequencing beyond the current recovery/status baseline
 
 Minimum CCC set to lock before coding:
 - addressing support needed for chosen boot flow
@@ -454,7 +457,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. expand scheduled transactions beyond the current one-byte read baseline
-2. add additional recovery/status CCC coverage beyond the current baseline
-3. deepen reset/error policy and recovery sequencing
+1. deepen reset/error policy and recovery sequencing beyond repeated-failure fault latching
+2. decide whether to mirror address-state transitions directly into controller inventory/policy rekeying
+3. extend scheduled service beyond the current selector-plus-read baseline into richer register write/update templates
 4. only then expand into reset-policy closure and selective IBI control

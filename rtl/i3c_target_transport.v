@@ -1,13 +1,15 @@
 `timescale 1ns/1ps
 
-module i3c_target_transport (
+module i3c_target_transport #(
+    parameter integer MAX_READ_BYTES = 4
+) (
     input  wire       rst_n,
     input  wire       scl,
     inout  wire       sda,
 
     input  wire       suppress,
     input  wire [6:0] target_addr,
-    input  wire [7:0] read_data,
+    input  wire [8*MAX_READ_BYTES-1:0] read_data,
     output reg  [7:0] write_data,
     output reg        write_valid,
     output reg        read_valid,
@@ -18,15 +20,31 @@ module i3c_target_transport (
     localparam [2:0] P_ADDR   = 3'd1;
     localparam [2:0] P_WRITE  = 3'd2;
     localparam [2:0] P_READ   = 3'd3;
-    localparam [2:0] P_IGNORE = 3'd4;
+    localparam [2:0] P_READ_ACK = 3'd4;
+    localparam [2:0] P_IGNORE   = 3'd5;
 
     reg [2:0] phase;
     reg [3:0] bit_pos;
+    reg [7:0] read_byte_idx;
     reg [7:0] rx_shift;
     reg       sda_drive_low;
     reg       ack_pending;
     reg       addr_match;
     reg       rw_latched;
+
+    function [7:0] get_read_byte;
+        input [8*MAX_READ_BYTES-1:0] data_bus;
+        input [7:0]                  idx;
+        begin
+            if (idx < MAX_READ_BYTES) begin
+                get_read_byte = data_bus[idx*8 +: 8];
+            end else begin
+                get_read_byte = data_bus[(MAX_READ_BYTES-1)*8 +: 8];
+            end
+        end
+    endfunction
+
+    wire [7:0] current_read_byte = get_read_byte(read_data, read_byte_idx);
 
     assign sda = sda_drive_low ? 1'b0 : 1'bz;
 
@@ -39,6 +57,7 @@ module i3c_target_transport (
         if (!rst_n) begin
             phase         <= P_IDLE;
             bit_pos       <= 4'd0;
+            read_byte_idx <= 8'd0;
             rx_shift      <= 8'h00;
             sda_drive_low <= 1'b0;
             ack_pending   <= 1'b0;
@@ -51,6 +70,7 @@ module i3c_target_transport (
         end else if (scl === 1'b1) begin
             phase         <= suppress ? P_IGNORE : P_ADDR;
             bit_pos       <= 4'd0;
+            read_byte_idx <= 8'd0;
             rx_shift      <= 8'h00;
             sda_drive_low <= 1'b0;
             ack_pending   <= 1'b0;
@@ -66,6 +86,7 @@ module i3c_target_transport (
         if (!rst_n) begin
             phase         <= P_IDLE;
             bit_pos       <= 4'd0;
+            read_byte_idx <= 8'd0;
             sda_drive_low <= 1'b0;
             ack_pending   <= 1'b0;
             selected      <= 1'b0;
@@ -88,7 +109,7 @@ module i3c_target_transport (
         end else if (ack_pending && (phase == P_ADDR || phase == P_WRITE) && (bit_pos == 4'd8)) begin
             sda_drive_low <= addr_match;
         end else if (phase == P_READ && bit_pos < 4'd8) begin
-            sda_drive_low <= ~read_data[7 - bit_pos];
+            sda_drive_low <= ~current_read_byte[7 - bit_pos];
         end else begin
             sda_drive_low <= 1'b0;
         end
@@ -98,6 +119,7 @@ module i3c_target_transport (
         if (!rst_n) begin
             phase       <= P_IDLE;
             bit_pos     <= 4'd0;
+            read_byte_idx <= 8'd0;
             rx_shift    <= 8'h00;
             ack_pending <= 1'b0;
             addr_match  <= 1'b0;
@@ -113,6 +135,7 @@ module i3c_target_transport (
             if (suppress) begin
                 phase       <= P_IGNORE;
                 bit_pos     <= 4'd0;
+                read_byte_idx <= 8'd0;
                 ack_pending <= 1'b0;
                 addr_match  <= 1'b0;
                 rw_latched  <= 1'b0;
@@ -138,6 +161,7 @@ module i3c_target_transport (
                                 if (rw_latched) begin
                                     read_valid <= 1'b1;
                                 end
+                                read_byte_idx <= 8'd0;
                                 phase <= rw_latched ? P_READ : P_WRITE;
                             end else begin
                                 phase <= P_IGNORE;
@@ -165,10 +189,29 @@ module i3c_target_transport (
 
                     P_READ: begin
                         if (bit_pos < 4'd8) begin
-                            bit_pos <= bit_pos + 1'b1;
+                            if (bit_pos == 4'd7) begin
+                                bit_pos <= 4'd0;
+                                phase   <= P_READ_ACK;
+                            end else begin
+                                bit_pos <= bit_pos + 1'b1;
+                            end
                         end else begin
                             bit_pos <= 4'd0;
-                            phase   <= P_IGNORE;
+                            phase   <= P_READ_ACK;
+                        end
+                    end
+
+                    P_READ_ACK: begin
+                        if (sda == 1'b0) begin
+                            if ((read_byte_idx + 1'b1) < MAX_READ_BYTES) begin
+                                read_byte_idx <= read_byte_idx + 1'b1;
+                                bit_pos       <= 4'd0;
+                                phase         <= P_READ;
+                            end else begin
+                                phase <= P_IGNORE;
+                            end
+                        end else begin
+                            phase <= P_IGNORE;
                         end
                     end
 
