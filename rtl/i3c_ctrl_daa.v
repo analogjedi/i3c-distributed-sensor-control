@@ -9,24 +9,32 @@ module i3c_ctrl_daa #(
     input  wire                           clear_table,
     input  wire                           discover_valid,
     input  wire [47:0]                    discover_pid,
+    input  wire [7:0]                     discover_bcr,
+    input  wire [7:0]                     discover_dcr,
 
     output reg                            assign_valid,
     output reg  [6:0]                     assign_dynamic_addr,
     output reg  [$clog2(MAX_ENDPOINTS):0] endpoint_count,
     output reg                            table_full,
     output reg                            duplicate_pid,
-    output reg  [47:0]                    last_pid
+    output reg  [47:0]                    last_pid,
+    output reg  [7:0]                     last_bcr,
+    output reg  [7:0]                     last_dcr
 );
 
     localparam integer COUNT_W = $clog2(MAX_ENDPOINTS) + 1;
 
     reg [47:0] pid_table [0:MAX_ENDPOINTS-1];
     reg [6:0]  addr_table[0:MAX_ENDPOINTS-1];
+    reg [7:0]  bcr_table [0:MAX_ENDPOINTS-1];
+    reg [7:0]  dcr_table [0:MAX_ENDPOINTS-1];
     wire [6:0] next_dynamic_addr;
 
     integer i;
     reg       discover_seen_match;
     reg [6:0] discover_matched_addr;
+    reg [7:0] discover_matched_bcr;
+    reg [7:0] discover_matched_dcr;
 
     assign next_dynamic_addr = DYN_ADDR_BASE + endpoint_count[COUNT_W-2:0];
 
@@ -38,9 +46,13 @@ module i3c_ctrl_daa #(
             table_full         <= 1'b0;
             duplicate_pid      <= 1'b0;
             last_pid           <= 48'h0;
+            last_bcr           <= 8'h00;
+            last_dcr           <= 8'h00;
             for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
                 pid_table[i]  <= 48'h0;
                 addr_table[i] <= 7'h00;
+                bcr_table[i]  <= 8'h00;
+                dcr_table[i]  <= 8'h00;
             end
         end else begin
             assign_valid  <= 1'b0;
@@ -50,25 +62,43 @@ module i3c_ctrl_daa #(
                 endpoint_count <= {($clog2(MAX_ENDPOINTS)+1){1'b0}};
                 table_full     <= 1'b0;
                 last_pid       <= 48'h0;
+                last_bcr       <= 8'h00;
+                last_dcr       <= 8'h00;
+                for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
+                    pid_table[i]  <= 48'h0;
+                    addr_table[i] <= 7'h00;
+                    bcr_table[i]  <= 8'h00;
+                    dcr_table[i]  <= 8'h00;
+                end
             end else if (discover_valid) begin
                 discover_seen_match   = 1'b0;
                 discover_matched_addr = 7'h00;
+                discover_matched_bcr  = 8'h00;
+                discover_matched_dcr  = 8'h00;
                 for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
                     if ((i < endpoint_count) && (pid_table[i] == discover_pid)) begin
                         discover_seen_match   = 1'b1;
                         discover_matched_addr = addr_table[i];
+                        discover_matched_bcr  = bcr_table[i];
+                        discover_matched_dcr  = dcr_table[i];
                     end
                 end
 
                 last_pid <= discover_pid;
+                last_bcr <= discover_bcr;
+                last_dcr <= discover_dcr;
 
                 if (discover_seen_match) begin
                     assign_valid        <= 1'b1;
                     assign_dynamic_addr <= discover_matched_addr;
                     duplicate_pid       <= 1'b1;
+                    last_bcr           <= discover_matched_bcr;
+                    last_dcr           <= discover_matched_dcr;
                 end else if (endpoint_count < MAX_ENDPOINTS) begin
                     pid_table[endpoint_count]  <= discover_pid;
                     addr_table[endpoint_count] <= next_dynamic_addr;
+                    bcr_table[endpoint_count]  <= discover_bcr;
+                    dcr_table[endpoint_count]  <= discover_dcr;
                     assign_valid               <= 1'b1;
                     assign_dynamic_addr        <= next_dynamic_addr;
                     endpoint_count             <= endpoint_count + 1'b1;

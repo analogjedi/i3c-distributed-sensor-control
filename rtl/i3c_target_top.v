@@ -2,7 +2,9 @@
 
 module i3c_target_top #(
     parameter [6:0]  STATIC_ADDR    = 7'h2A,
-    parameter [47:0] PROVISIONAL_ID = 48'h1234_5678_9ABC
+    parameter [47:0] PROVISIONAL_ID = 48'h1234_5678_9ABC,
+    parameter [7:0]  TARGET_BCR     = 8'h01,
+    parameter [7:0]  TARGET_DCR     = 8'h5A
 ) (
     input  wire       clk,
     input  wire       rst_n,
@@ -70,7 +72,9 @@ module i3c_target_top #(
     );
 
     i3c_target_ccc #(
-        .STATIC_ADDR(STATIC_ADDR)
+        .STATIC_ADDR(STATIC_ADDR),
+        .TARGET_BCR (TARGET_BCR),
+        .TARGET_DCR (TARGET_DCR)
     ) u_target_ccc (
         .rst_n            (rst_n),
         .scl              (scl),

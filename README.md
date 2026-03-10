@@ -14,7 +14,28 @@ The repository therefore serves three linked purposes:
 2. provide executable RTL and regression tests for the bus-management features being implemented phase by phase
 3. use Spartan-7 only as a practical hardware validation platform for SDR bring-up and signal-level verification
 
-Current code and planning artifacts:
+## Protocol Status
+
+This is the fastest map of what each I3C feature does in this system and how far the repo has gotten with it.
+
+| Feature / Command | Purpose in the System | Status | Current repo baseline |
+| --- | --- | --- | --- |
+| SDR private read/write | Normal controller-to-target telemetry and configuration traffic once addressing is stable. | Implemented | Controller and target transport path is regression-backed. |
+| Broadcast CCC `RSTDAA` | Clear dynamic addresses so the controller can recover or restart discovery from a known state. | Implemented | Target address-state reset is wired and tested. |
+| Broadcast CCC `SETAASA` | Let a target use its static address as the active dynamic address during static-assisted boot. | Implemented | Static-assisted address activation is wired and tested. |
+| Direct CCC framing | Required controller transaction shape for target-specific CCC commands that use repeated start. | Implemented | Controller-side direct write/read framing is in place. |
+| Direct CCC `SETDASA` | Assign a chosen dynamic address to a specific target that can still be reached by static address. | Implemented | Target-side decode updates the active dynamic address and suppresses normal transport during the command. |
+| Direct CCC `GETPID` | Read a target provisional ID so the controller can identify it before or alongside address policy. | Implemented | Target returns PID through the direct CCC read path. |
+| `ENTDAA` single-target baseline | Discover one unassigned target, capture identity fields, and assign a dynamic address. | Implemented | PID/BCR/DCR capture plus controller-side assignment is regression-backed. |
+| `ENTDAA` multi-target sequencing | Enumerate multiple unassigned targets in deterministic PID order and assign addresses across repeated discovery passes. | Implemented | Two-target and four-target regressions cover arbitration ordering, BCR/DCR inventory retention, repeated assignment, full-table population, and exhaustion/NACK behavior. |
+| Broader CCC subset | Add additional management commands for policy, status, and recovery. | Pending | Current repo only covers `RSTDAA`, `SETAASA`, `SETDASA`, `GETPID`, and `ENTDAA`. |
+| Controller endpoint policy state | Turn discovered endpoints into a managed inventory with per-target policy, class, scheduling, and health state. | Pending | PID/BCR/DCR retention exists; broader policy state does not. |
+| Scheduler-driven multi-endpoint service | Poll and service known targets deterministically once the address map is stable. | Pending | No scheduler RTL yet. |
+| Reset and recovery policy | Escalate from transaction failures or stale bus state into targeted recovery instead of blind reboot behavior. | Pending | Basic address-state commands exist, but retry/escalation logic is still ahead. |
+| In-band interrupts (IBI) | Allow rare urgent target-originated events without turning routine traffic into asynchronous chaos. | Future | Intentionally deferred until addressing, CCCs, and scheduling are stable. |
+| HDR modes | Higher-performance optional transfer modes beyond current SDR scope. | Future | Explicitly out of current project scope. |
+
+## Current Code and Planning Artifacts
 
 - `rtl/i3c_bus_engine.v`: Low-level SDR bus engine for START/STOP, byte transfer, and ACK/NACK handling.
 - `rtl/i3c_ctrl_txn_layer.v`: Transaction layer wrapper above the bus engine.
@@ -22,7 +43,7 @@ Current code and planning artifacts:
 - `rtl/i3c_ctrl_ccc.v`: Broadcast CCC issue path built on the transaction layer.
 - `rtl/i3c_ctrl_direct_ccc.v`: Controller-side direct CCC framing engine with repeated-start support for direct write/read command flows.
 - `rtl/i3c_ctrl_entdaa.v`: Controller-side `ENTDAA` sequencer baseline for PID/BCR/DCR capture and dynamic-address assignment.
-- `rtl/i3c_ctrl_daa.v`: Controller-side dynamic-address assignment state scaffolding.
+- `rtl/i3c_ctrl_daa.v`: Controller-side dynamic-address assignment and endpoint-inventory state for PID/BCR/DCR retention.
 - `rtl/i3c_target_transport.v`: Synthesizable SDR target transport block.
 - `rtl/i3c_target_ccc.v`: Target-side CCC decode block for broadcast CCCs, direct `SETDASA`/`GETPID`, and `ENTDAA` participation with arbitration handling.
 - `rtl/i3c_target_daa.v`: Target-side dynamic-address state block.
@@ -40,6 +61,7 @@ Current code and planning artifacts:
 - `tb/tb_i3c_getpid.v`: Integration regression for target-side `GETPID` readback.
 - `tb/tb_i3c_entdaa.v`: First real controller/target `ENTDAA` regression with controller-side DAA bookkeeping.
 - `tb/tb_i3c_entdaa_multi.v`: Multi-target `ENTDAA` regression covering ordering, repeated assignment, and exhaustion/NACK behavior.
+- `tb/tb_i3c_entdaa_stress.v`: Four-target `ENTDAA` stress regression covering PID ordering, BCR/DCR inventory capture, full-table population, and exhaustion/NACK behavior.
 - `constraints/spartan7_i3c_demo.xdc`: Constraint template to adapt to your board.
 - `Makefile`: Simulation runner (`iverilog` + `vvp`).
 - `docs/I3C_Closed_System_IP_Plan.md`: original program plan.
@@ -65,7 +87,7 @@ What now exists beyond the original Phase 0 baseline:
 - controller-side direct CCC framing with repeated-start sequencing for direct write/read command flows
 - target-side direct CCC decode and transport holdoff for `SETDASA`
 - target-side `GETPID` readback
-- multi-target `ENTDAA` controller/target baseline with PID/BCR/DCR capture, arbitration, repeated assignment, and exhaustion/NACK behavior
+- multi-target `ENTDAA` controller/target baseline with PID/BCR/DCR capture, controller inventory retention, arbitration, repeated assignment, and exhaustion/NACK behavior
 - dedicated regressions for target transport and DAA state behavior
 
 It gives you a clean path to:
@@ -73,24 +95,6 @@ It gives you a clean path to:
 1. Verify timing/state-machine behavior in simulation
 2. Synthesize for Spartan-7
 3. Probe `SCL`/`SDA` on hardware and confirm protocol framing
-
-## Feature Status
-
-| Feature / Command | Status | Notes |
-| --- | --- | --- |
-| SDR private read/write | Implemented | Baseline controller/target transport path is regression-backed. |
-| Broadcast CCC `RSTDAA` | Implemented | Target address-state reset path is wired and tested. |
-| Broadcast CCC `SETAASA` | Implemented | Static-assisted address activation path is wired and tested. |
-| Direct CCC framing | Implemented | Controller-side repeated-start direct write/read framing is in place. |
-| Direct CCC `SETDASA` | Implemented | Target-side decode updates dynamic address and suppresses normal transport during the command. |
-| Direct CCC `GETPID` | Implemented | Target returns provisional ID through the direct CCC read path. |
-| `ENTDAA` single-target baseline | Implemented | Controller captures PID/BCR/DCR and assigns a dynamic address through the baseline regression. |
-| `ENTDAA` multi-target sequencing | Implemented | Two-target regression covers arbitration ordering, repeated assignment, and “no more unassigned targets” NACK behavior. |
-| Broader CCC subset | Pending | Additional direct/broadcast CCCs for policy, status, and recovery still need implementation. |
-| Scheduler-driven multi-endpoint service | Pending | Polling cadence, bandwidth allocation, and health accounting are not in RTL yet. |
-| Reset and recovery policy | Pending | Basic address-state commands exist, but retry/escalation logic is still ahead. |
-| In-band interrupts (IBI) | Future | Intentionally deferred until addressing, CCCs, and scheduler behavior are stable. |
-| HDR modes | Future | Explicitly out of current project scope. |
 
 ## Quick Start (Simulation)
 
@@ -111,6 +115,7 @@ Expected result:
 - `sim-getpid` prints `PASS` for direct CCC `GETPID`
 - `sim-entdaa` prints `PASS` for the single-target `ENTDAA` baseline
 - `sim-entdaa-multi` prints `PASS` for the multi-target `ENTDAA` sequencing baseline
+- `sim-entdaa-stress` prints `PASS` for the four-target `ENTDAA` inventory stress baseline
 
 If you only want the original happy-path test:
 
@@ -130,8 +135,8 @@ In short:
 
 - Phase 0 in this repo is a minimal SDR transport bring-up path for Spartan-7.
 - Phase 0.5 is now implemented: controller refactor plus synthesizable target transport.
-- Phase 1 now includes DAA state scaffolding, broadcast CCC support (`RSTDAA`, `SETAASA`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`, and a regression-backed multi-target `ENTDAA` baseline.
-- The remaining Phase 1 work is broader CCC coverage, richer controller inventory/policy state, deeper reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
+- Phase 1 now includes DAA state scaffolding, controller-side PID/BCR/DCR inventory retention, broadcast CCC support (`RSTDAA`, `SETAASA`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`, and regression-backed multi-target `ENTDAA` baselines.
+- The remaining Phase 1 work is broader CCC coverage, deeper controller policy state, reset/error policy, scheduler-driven six-endpoint operation, and selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
 ## Vivado Bring-up

@@ -45,12 +45,13 @@ Implemented and regression-backed:
 - multi-target `ENTDAA` controller/target baseline with:
   - PID/BCR/DCR capture
   - controller-side DAA address assignment
+  - controller-side PID/BCR/DCR inventory retention
   - arbitration-driven target ordering
 
 Not yet implemented:
 
 - broader target-side direct CCC decode/response path
-- richer controller endpoint inventory state beyond PID-only DAA bookkeeping
+- broader controller endpoint inventory and policy state beyond PID/BCR/DCR bookkeeping
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -93,7 +94,7 @@ Recommended controller file/module breakdown:
 3. `rtl/i3c_ctrl_daa.v`
    - runs `ENTDAA`
    - supports optional static-assisted assignment path
-   - updates endpoint inventory table with assigned dynamic addresses
+   - updates endpoint inventory table with assigned dynamic addresses plus retained PID/BCR/DCR metadata
 
 4. `rtl/i3c_ctrl_ccc.v`
    - emits supported CCC transactions
@@ -173,6 +174,8 @@ Standardize these internal interfaces early:
 - endpoint table interface
   - static ID
   - dynamic address
+  - PID
+  - BCR/DCR
   - class
   - enabled state
   - IBI enable state
@@ -249,7 +252,7 @@ Current status:
 - target-side `SETDASA` is implemented and regression-backed
 - target-side `GETPID` is implemented and regression-backed
 - multi-target `ENTDAA` sequencing is implemented and regression-backed
-- richer controller inventory/policy state remains outstanding
+- controller inventory now retains PID/BCR/DCR, while broader policy state remains outstanding
 
 Exit criteria:
 - single-target and multi-target DAA tests pass
@@ -421,7 +424,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. add controller inventory/policy hooks for BCR/DCR alongside PID capture
-2. expand target-side direct CCC decode/response beyond `SETDASA` and `GETPID`
-3. add multi-target `ENTDAA` stress coverage beyond the current two-target baseline
+1. expand target-side direct CCC decode/response beyond `SETDASA` and `GETPID`
+2. add richer controller endpoint policy/state beyond PID/BCR/DCR capture
+3. extend `ENTDAA` stress coverage toward six-endpoint scheduling assumptions
 4. only then expand into reset-policy CCCs and IBI control

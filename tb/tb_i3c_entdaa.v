@@ -13,6 +13,8 @@ module tb_i3c_entdaa;
     wire [7:0] discover_dcr;
     wire       daa_assign_valid;
     wire [6:0] daa_assign_addr;
+    wire [7:0] daa_last_bcr;
+    wire [7:0] daa_last_dcr;
     wire       entdaa_done;
     wire       entdaa_nack;
     wire [6:0] entdaa_assigned_addr;
@@ -94,12 +96,16 @@ module tb_i3c_entdaa;
         .clear_table        (1'b0),
         .discover_valid     (discover_valid),
         .discover_pid       (discover_pid),
+        .discover_bcr       (discover_bcr),
+        .discover_dcr       (discover_dcr),
         .assign_valid       (daa_assign_valid),
         .assign_dynamic_addr(daa_assign_addr),
         .endpoint_count     (),
         .table_full         (),
         .duplicate_pid      (),
-        .last_pid           ()
+        .last_pid           (),
+        .last_bcr           (daa_last_bcr),
+        .last_dcr           (daa_last_dcr)
     );
 
     i3c_sdr_controller #(
@@ -179,6 +185,11 @@ module tb_i3c_entdaa;
 
         if ((discover_bcr != 8'h01) || (discover_dcr != 8'h5A)) begin
             $display("FAIL: BCR/DCR mismatch bcr=0x%02h dcr=0x%02h", discover_bcr, discover_dcr);
+            $finish(1);
+        end
+        if ((daa_last_bcr != 8'h01) || (daa_last_dcr != 8'h5A)) begin
+            $display("FAIL: controller inventory BCR/DCR mismatch bcr=0x%02h dcr=0x%02h",
+                     daa_last_bcr, daa_last_dcr);
             $finish(1);
         end
 

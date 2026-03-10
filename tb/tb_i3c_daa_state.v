@@ -8,12 +8,16 @@ module tb_i3c_daa_state;
     reg        clear_table;
     reg        discover_valid;
     reg [47:0] discover_pid;
+    reg [7:0]  discover_bcr;
+    reg [7:0]  discover_dcr;
     wire       assign_valid;
     wire [6:0] assign_dynamic_addr;
     wire [3:0] endpoint_count;
     wire       table_full;
     wire       duplicate_pid;
     wire [47:0] last_pid;
+    wire [7:0] last_bcr;
+    wire [7:0] last_dcr;
     reg        assign_seen;
     reg [6:0]  assigned_addr_seen;
     reg        duplicate_seen;
@@ -34,12 +38,16 @@ module tb_i3c_daa_state;
         .clear_table        (clear_table),
         .discover_valid     (discover_valid),
         .discover_pid       (discover_pid),
+        .discover_bcr       (discover_bcr),
+        .discover_dcr       (discover_dcr),
         .assign_valid       (assign_valid),
         .assign_dynamic_addr(assign_dynamic_addr),
         .endpoint_count     (endpoint_count),
         .table_full         (table_full),
         .duplicate_pid      (duplicate_pid),
-        .last_pid           (last_pid)
+        .last_pid           (last_pid),
+        .last_bcr           (last_bcr),
+        .last_dcr           (last_dcr)
     );
 
     i3c_target_daa #(
@@ -65,6 +73,8 @@ module tb_i3c_daa_state;
         clear_table             = 1'b0;
         discover_valid          = 1'b0;
         discover_pid            = 48'h0;
+        discover_bcr            = 8'h00;
+        discover_dcr            = 8'h00;
         assign_seen             = 1'b0;
         assigned_addr_seen      = 7'h00;
         duplicate_seen          = 1'b0;
@@ -75,20 +85,23 @@ module tb_i3c_daa_state;
         #100;
         rst_n = 1'b1;
 
-        discover_once(48'hAA00_0000_0001);
-        if (!assign_seen || (assigned_addr_seen != 7'h20) || (endpoint_count != 1)) begin
+        discover_once(48'hAA00_0000_0001, 8'h11, 8'h91);
+        if (!assign_seen || (assigned_addr_seen != 7'h20) || (endpoint_count != 1) ||
+            (last_pid != 48'hAA00_0000_0001) || (last_bcr != 8'h11) || (last_dcr != 8'h91)) begin
             $display("FAIL: first DAA assignment mismatch");
             $finish(1);
         end
 
-        discover_once(48'hAA00_0000_0002);
-        if (!assign_seen || (assigned_addr_seen != 7'h21) || (endpoint_count != 2)) begin
+        discover_once(48'hAA00_0000_0002, 8'h22, 8'hA2);
+        if (!assign_seen || (assigned_addr_seen != 7'h21) || (endpoint_count != 2) ||
+            (last_pid != 48'hAA00_0000_0002) || (last_bcr != 8'h22) || (last_dcr != 8'hA2)) begin
             $display("FAIL: second DAA assignment mismatch");
             $finish(1);
         end
 
-        discover_once(48'hAA00_0000_0001);
-        if (!assign_seen || !duplicate_seen || (assigned_addr_seen != 7'h20)) begin
+        discover_once(48'hAA00_0000_0001, 8'hFF, 8'hEE);
+        if (!assign_seen || !duplicate_seen || (assigned_addr_seen != 7'h20) ||
+            (last_bcr != 8'h11) || (last_dcr != 8'h91)) begin
             $display("FAIL: duplicate PID handling mismatch");
             $finish(1);
         end
@@ -120,11 +133,15 @@ module tb_i3c_daa_state;
 
     task discover_once;
         input [47:0] pid;
+        input [7:0]  bcr;
+        input [7:0]  dcr;
         begin
             @(posedge clk);
             assign_seen     <= 1'b0;
             duplicate_seen  <= 1'b0;
             discover_pid    <= pid;
+            discover_bcr    <= bcr;
+            discover_dcr    <= dcr;
             discover_valid  <= 1'b1;
             @(posedge clk);
             @(posedge clk);
