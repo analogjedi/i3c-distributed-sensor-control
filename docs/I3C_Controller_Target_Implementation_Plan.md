@@ -278,7 +278,7 @@ Current status:
 - controller inventory now retains PID/BCR/DCR
 - DAA discovery now auto-populates controller policy records
 - controller policy now tracks per-address class, default enable state, event-enable masks, reset action, last status, and basic health bits
-- a first controller scheduler stub now walks integrated policy state and emits round-robin service requests while skipping disabled or faulted endpoints
+- a first controller scheduler path now walks integrated policy state, emits round-robin service requests, and drives real one-byte read transactions through `rtl/i3c_ctrl_top.v`
 - `ENTDAA` stress coverage now reaches a six-endpoint exact-fit baseline
 
 Exit criteria:
@@ -452,7 +452,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. connect scheduler service requests into real controller transaction issue
-2. add richer scheduler-facing service statistics and per-endpoint cadence control
+1. add richer scheduler-facing service statistics and per-endpoint cadence control
+2. expand scheduled transactions beyond the current one-byte read baseline
 3. add additional recovery/status CCC coverage beyond the current baseline
 4. only then expand into reset-policy CCCs and IBI control

@@ -34,7 +34,7 @@ This is the fastest map of what each I3C feature does in this system and how far
 | Event-control CCCs `ENEC` / `DISEC` | Enable or disable target-side event classes so future IBI/event policy has explicit controller ownership. | Implemented | Broadcast and direct event-mask updates are wired into target state and regression-backed. |
 | Broader CCC subset | Add additional management commands for policy, status, and recovery. | In Progress | Repo now covers `RSTDAA`, `SETAASA`, `SETDASA`, `GETPID`, `GETBCR`, `GETDCR`, `GETSTATUS`, `RSTACT`, `ENEC`, `DISEC`, and `ENTDAA`; additional recovery/status CCCs are still ahead. |
 | Controller endpoint policy state | Turn discovered endpoints into a managed inventory with per-target policy, class, scheduling, and health state. | In Progress | DAA now auto-populates policy records with PID/BCR/DCR, derived class, enable state, event-mask, reset-action, status, and basic health bits. |
-| Scheduler-driven multi-endpoint service | Poll and service known targets deterministically once the address map is stable. | In Progress | A round-robin scheduler stub now walks integrated policy state and skips disabled or faulted endpoints; transaction coupling is still ahead. |
+| Scheduler-driven multi-endpoint service | Poll and service known targets deterministically once the address map is stable. | In Progress | A round-robin scheduler now walks integrated policy state, issues real one-byte read transactions, skips disabled or faulted endpoints, and captures service responses; richer cadence/template policy is still ahead. |
 | Reset and recovery policy | Escalate from transaction failures or stale bus state into targeted recovery instead of blind reboot behavior. | Pending | Basic address-state commands exist, but retry/escalation logic is still ahead. |
 | In-band interrupts (IBI) | Allow rare urgent target-originated events without turning routine traffic into asynchronous chaos. | Future | Intentionally deferred until addressing, CCCs, and scheduling are stable. |
 | HDR modes | Higher-performance optional transfer modes beyond current SDR scope. | Future | Explicitly out of current project scope. |
@@ -51,6 +51,7 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `rtl/i3c_ctrl_inventory.v`: Controller-side bridge that feeds DAA discovery results directly into endpoint policy state.
 - `rtl/i3c_ctrl_policy.v`: Controller-side endpoint policy table for per-address class, enable, event-mask, reset-action, status, and basic health tracking.
 - `rtl/i3c_ctrl_scheduler.v`: First round-robin scheduler stub that scans policy state and emits service requests for enabled, healthy endpoints.
+- `rtl/i3c_ctrl_top.v`: Controller integration wrapper that connects inventory, scheduler, and transaction issue into real scheduled service reads.
 - `rtl/i3c_target_transport.v`: Synthesizable SDR target transport block.
 - `rtl/i3c_target_ccc.v`: Target-side CCC decode block for event-control, status/reset, metadata, addressing CCCs, and `ENTDAA` participation with arbitration handling.
 - `rtl/i3c_target_daa.v`: Target-side dynamic-address state block.
@@ -72,6 +73,7 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `tb/tb_i3c_entdaa_multi.v`: Multi-target `ENTDAA` regression covering ordering, repeated assignment, automatic policy population, and exhaustion/NACK behavior.
 - `tb/tb_i3c_entdaa_stress.v`: Six-target `ENTDAA` stress regression covering PID ordering, BCR/DCR inventory capture, automatic policy population, exact-fit table population, and exhaustion/NACK behavior.
 - `tb/tb_i3c_scheduler.v`: Scheduler regression proving round-robin service selection from policy state, including skip-on-disable and skip-on-fault behavior.
+- `tb/tb_i3c_ctrl_top_service.v`: End-to-end controller/target regression proving scheduled policy entries turn into real on-bus reads and captured service responses.
 - `tb/tb_i3c_event_policy_ccc.v`: Integration regression for `ENEC`/`DISEC` target policy updates and mirrored controller-side event-mask state.
 - `tb/tb_i3c_reset_status_policy.v`: Integration regression for direct `RSTACT`, `GETSTATUS`, and mirrored controller-side reset/status policy tracking.
 - `constraints/spartan7_i3c_demo.xdc`: Constraint template to adapt to your board.
@@ -100,7 +102,7 @@ What now exists beyond the original Phase 0 baseline:
 - target-side metadata/status readback for `GETPID`, `GETBCR`, `GETDCR`, and `GETSTATUS`
 - controller-side inventory bridge that auto-populates policy state from `ENTDAA` results
 - controller-side endpoint policy table for per-target class, default enable, event-mask, reset-action, status, and basic health tracking
-- first scheduler stub that walks integrated policy state and produces round-robin service requests
+- first scheduler path that walks integrated policy state and produces round-robin one-byte read transactions through a controller top wrapper
 - multi-target `ENTDAA` controller/target baseline with PID/BCR/DCR capture, controller inventory retention, arbitration, repeated assignment, six-target exact-fit stress coverage, and exhaustion/NACK behavior
 - dedicated regressions for target transport and DAA state behavior
 
@@ -133,6 +135,7 @@ Expected result:
 - `sim-entdaa-multi` prints `PASS` for the multi-target `ENTDAA` sequencing baseline
 - `sim-entdaa-stress` prints `PASS` for the six-target `ENTDAA` inventory stress baseline
 - `sim-scheduler` prints `PASS` for the policy-driven round-robin scheduler stub
+- `sim-ctrl-top-service` prints `PASS` for end-to-end scheduled service reads through the controller top integration path
 - `sim-event-policy-ccc` prints `PASS` for target-side `ENEC`/`DISEC` plus mirrored controller policy tracking
 - `sim-reset-status-policy` prints `PASS` for direct `RSTACT`/`GETSTATUS` plus mirrored controller reset/status policy tracking
 
@@ -154,8 +157,8 @@ In short:
 
 - Phase 0 in this repo is a minimal SDR transport bring-up path for Spartan-7.
 - Phase 0.5 is now implemented: controller refactor plus synthesizable target transport.
-- Phase 1 now includes DAA state scaffolding, controller-side PID/BCR/DCR inventory retention, automatic DAA-to-policy population, a first controller policy table with class/enable/health bits, a round-robin scheduler stub, broadcast CCC support (`RSTDAA`, `SETAASA`, `ENEC`, `DISEC`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`/`GETBCR`/`GETDCR`/`GETSTATUS`/`RSTACT`, and regression-backed multi-target `ENTDAA` baselines through six endpoints.
-- The remaining Phase 1 work is coupling scheduler requests into real controller transactions, additional recovery/status CCC coverage, deeper reset/error policy, richer service statistics, and selective IBI.
+- Phase 1 now includes DAA state scaffolding, controller-side PID/BCR/DCR inventory retention, automatic DAA-to-policy population, a first controller policy table with class/enable/health bits, a round-robin scheduler path issuing real scheduled reads, broadcast CCC support (`RSTDAA`, `SETAASA`, `ENEC`, `DISEC`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`/`GETBCR`/`GETDCR`/`GETSTATUS`/`RSTACT`, and regression-backed multi-target `ENTDAA` baselines through six endpoints.
+- The remaining Phase 1 work is richer per-endpoint cadence/service statistics, additional recovery/status CCC coverage, deeper reset/error policy, and selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
 ## Vivado Bring-up
