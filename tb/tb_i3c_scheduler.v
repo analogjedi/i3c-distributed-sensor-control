@@ -13,6 +13,9 @@ module tb_i3c_scheduler;
     reg        enable_update_valid;
     reg [6:0]  enable_update_addr;
     reg        enable_update_value;
+    reg        service_period_update_valid;
+    reg [6:0]  service_period_update_addr;
+    reg [7:0]  service_period_update_value;
     reg        status_update_valid;
     reg [6:0]  status_update_addr;
     reg [15:0] status_update_value;
@@ -28,6 +31,7 @@ module tb_i3c_scheduler;
     wire [1:0] scan_class;
     wire       scan_enabled;
     wire       scan_health_fault;
+    wire       scan_due;
     wire       req_valid;
     wire [6:0] req_addr;
     wire [1:0] req_class;
@@ -40,6 +44,12 @@ module tb_i3c_scheduler;
     wire [1:0] query_class;
     wire       query_enabled;
     wire       query_health_fault;
+    wire [7:0] query_service_period;
+    wire [15:0] query_service_count;
+    wire [15:0] query_success_count;
+    wire [15:0] query_error_count;
+    wire [7:0] query_consecutive_failures;
+    wire       query_due_now;
 
     i3c_ctrl_inventory #(
         .MAX_ENDPOINTS(6),
@@ -49,6 +59,8 @@ module tb_i3c_scheduler;
         .rst_n                    (rst_n),
         .clear_tables             (1'b0),
         .default_endpoint_enable  (1'b1),
+        .default_service_period   (8'd1),
+        .schedule_tick            (schedule_tick),
         .discover_valid           (discover_valid),
         .discover_pid             (discover_pid),
         .discover_bcr             (discover_bcr),
@@ -63,6 +75,9 @@ module tb_i3c_scheduler;
         .enable_update_valid      (enable_update_valid),
         .enable_update_addr       (enable_update_addr),
         .enable_update_value      (enable_update_value),
+        .service_period_update_valid(service_period_update_valid),
+        .service_period_update_addr(service_period_update_addr),
+        .service_period_update_value(service_period_update_value),
         .reset_action_update_valid(1'b0),
         .reset_action_update_addr (7'h00),
         .reset_action_update_value(8'h00),
@@ -70,6 +85,9 @@ module tb_i3c_scheduler;
         .status_update_addr       (status_update_addr),
         .status_update_value      (status_update_value),
         .status_update_ok         (status_update_ok),
+        .service_result_valid     (req_accept),
+        .service_result_addr      (req_addr),
+        .service_result_nack      (1'b0),
         .query_addr               (query_addr),
         .query_found              (query_found),
         .query_pid                (),
@@ -82,12 +100,20 @@ module tb_i3c_scheduler;
         .query_event_mask         (),
         .query_reset_action       (),
         .query_status             (),
+        .query_service_period     (query_service_period),
+        .query_service_count      (query_service_count),
+        .query_success_count      (query_success_count),
+        .query_error_count        (query_error_count),
+        .query_consecutive_failures(query_consecutive_failures),
+        .query_last_service_tag   (),
+        .query_due_now            (query_due_now),
         .scan_index               (scan_index),
         .scan_valid               (scan_valid),
         .scan_addr                (scan_addr),
         .scan_class               (scan_class),
         .scan_enabled             (scan_enabled),
         .scan_health_fault        (scan_health_fault),
+        .scan_due                 (scan_due),
         .assign_valid             (),
         .assign_dynamic_addr      (),
         .daa_endpoint_count       (),
@@ -118,6 +144,7 @@ module tb_i3c_scheduler;
         .scan_class       (scan_class),
         .scan_enabled     (scan_enabled),
         .scan_health_fault(scan_health_fault),
+        .scan_due         (scan_due),
         .req_valid        (req_valid),
         .req_addr         (req_addr),
         .req_class        (req_class),
@@ -138,6 +165,9 @@ module tb_i3c_scheduler;
         enable_update_valid = 1'b0;
         enable_update_addr  = 7'h00;
         enable_update_value = 1'b0;
+        service_period_update_valid = 1'b0;
+        service_period_update_addr = 7'h00;
+        service_period_update_value = 8'h00;
         status_update_valid = 1'b0;
         status_update_addr  = 7'h00;
         status_update_value = 16'h0000;
@@ -166,26 +196,42 @@ module tb_i3c_scheduler;
         set_enable(7'h11, 1'b0);
         set_status(7'h12, 16'h55AA, 1'b0);
         @(posedge clk);
-        check_policy_state(7'h11, 2'd2, 1'b0, 1'b0);
-        check_policy_state(7'h12, 2'd1, 1'b1, 1'b1);
+        check_policy_state(7'h11, 2'd2, 1'b0, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h12, 2'd1, 1'b1, 1'b1, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
 
         expect_schedule(7'h10, 2'd3);
         accept_schedule;
         expect_schedule(7'h13, 2'd2);
         accept_schedule;
 
-        set_enable(7'h11, 1'b1);
-        set_status(7'h12, 16'hAA55, 1'b1);
-        @(posedge clk);
-        check_policy_state(7'h11, 2'd2, 1'b1, 1'b0);
-        check_policy_state(7'h12, 2'd1, 1'b1, 1'b0);
+        set_service_period(7'h10, 8'd2);
+        set_service_period(7'h13, 8'd3);
+        check_policy_state(7'h10, 2'd3, 1'b1, 1'b0, 8'd2, 16'd1, 16'd1, 16'd0, 8'd0, 1'b0);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd3, 16'd1, 16'd1, 16'd0, 8'd0, 1'b0);
 
         expect_schedule(7'h10, 2'd3);
         accept_schedule;
+        check_policy_state(7'h10, 2'd3, 1'b1, 1'b0, 8'd2, 16'd2, 16'd2, 16'd0, 8'd0, 1'b0);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd3, 16'd1, 16'd1, 16'd0, 8'd0, 1'b0);
+
+        expect_missed_slot;
+
+        set_enable(7'h11, 1'b1);
+        set_status(7'h12, 16'hAA55, 1'b1);
+        @(posedge clk);
+        check_policy_state(7'h11, 2'd2, 1'b1, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h12, 2'd1, 1'b1, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
+
         expect_schedule(7'h11, 2'd2);
         accept_schedule;
         expect_schedule(7'h12, 2'd1);
         accept_schedule;
+        expect_schedule(7'h13, 2'd2);
+        accept_schedule;
+        check_policy_state(7'h10, 2'd3, 1'b1, 1'b0, 8'd2, 16'd2, 16'd2, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h11, 2'd2, 1'b1, 1'b0, 8'd1, 16'd1, 16'd1, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h12, 2'd1, 1'b1, 1'b0, 8'd1, 16'd1, 16'd1, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd3, 16'd2, 16'd2, 16'd0, 8'd0, 1'b0);
 
         set_enable(7'h10, 1'b0);
         set_enable(7'h11, 1'b0);
@@ -230,6 +276,20 @@ module tb_i3c_scheduler;
             enable_update_valid <= 1'b1;
             @(posedge clk);
             enable_update_valid <= 1'b0;
+        end
+    endtask
+
+    task set_service_period;
+        input [6:0] addr;
+        input [7:0] value;
+        begin
+            @(posedge clk);
+            service_period_update_addr  <= addr;
+            service_period_update_value <= value;
+            service_period_update_valid <= 1'b1;
+            @(posedge clk);
+            service_period_update_valid <= 1'b0;
+            @(posedge clk);
         end
     endtask
 
@@ -285,14 +345,28 @@ module tb_i3c_scheduler;
         input [1:0] expected_class;
         input       expected_enabled;
         input       expected_fault;
+        input [7:0] expected_period;
+        input [15:0] expected_service_count;
+        input [15:0] expected_success_count;
+        input [15:0] expected_error_count;
+        input [7:0] expected_consecutive_failures;
+        input       expected_due_now;
         begin
             query_addr <= expected_addr;
             @(posedge clk);
             if (!query_found || (query_class != expected_class) ||
                 (query_enabled != expected_enabled) ||
-                (query_health_fault != expected_fault)) begin
-                $display("FAIL: policy state mismatch addr=0x%02h class=%0d enabled=%0d fault=%0d",
-                         expected_addr, query_class, query_enabled, query_health_fault);
+                (query_health_fault != expected_fault) ||
+                (query_service_period != expected_period) ||
+                (query_service_count != expected_service_count) ||
+                (query_success_count != expected_success_count) ||
+                (query_error_count != expected_error_count) ||
+                (query_consecutive_failures != expected_consecutive_failures) ||
+                (query_due_now != expected_due_now)) begin
+                $display("FAIL: policy state mismatch addr=0x%02h class=%0d enabled=%0d fault=%0d period=%0d service=%0d success=%0d error=%0d failrun=%0d due=%0d",
+                         expected_addr, query_class, query_enabled, query_health_fault,
+                         query_service_period, query_service_count, query_success_count,
+                         query_error_count, query_consecutive_failures, query_due_now);
                 $finish(1);
             end
         end

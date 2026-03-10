@@ -12,6 +12,7 @@ module i3c_ctrl_top #(
 
     input  wire                           clear_tables,
     input  wire                           default_endpoint_enable,
+    input  wire [7:0]                     default_service_period,
 
     input  wire                           discover_valid,
     input  wire [47:0]                    discover_pid,
@@ -40,6 +41,10 @@ module i3c_ctrl_top #(
     input  wire [15:0]                    status_update_value,
     input  wire                           status_update_ok,
 
+    input  wire                           service_period_update_valid,
+    input  wire [6:0]                     service_period_update_addr,
+    input  wire [7:0]                     service_period_update_value,
+
     input  wire                           schedule_enable,
     input  wire                           schedule_tick,
 
@@ -55,6 +60,13 @@ module i3c_ctrl_top #(
     output wire [7:0]                     query_event_mask,
     output wire [7:0]                     query_reset_action,
     output wire [15:0]                    query_status,
+    output wire [7:0]                     query_service_period,
+    output wire [15:0]                    query_service_count,
+    output wire [15:0]                    query_success_count,
+    output wire [15:0]                    query_error_count,
+    output wire [7:0]                     query_consecutive_failures,
+    output wire [15:0]                    query_last_service_tag,
+    output wire                           query_due_now,
 
     output wire [$clog2(MAX_ENDPOINTS):0] endpoint_count,
     output wire                           policy_table_full,
@@ -95,6 +107,7 @@ module i3c_ctrl_top #(
     wire [1:0] scan_class;
     wire       scan_enabled;
     wire       scan_health_fault;
+    wire       scan_due;
 
     reg        txn_req_valid;
     wire       txn_req_ready;
@@ -116,6 +129,8 @@ module i3c_ctrl_top #(
         .rst_n                    (rst_n),
         .clear_tables             (clear_tables),
         .default_endpoint_enable  (default_endpoint_enable),
+        .default_service_period   (default_service_period),
+        .schedule_tick            (schedule_tick),
         .discover_valid           (discover_valid),
         .discover_pid             (discover_pid),
         .discover_bcr             (discover_bcr),
@@ -137,6 +152,12 @@ module i3c_ctrl_top #(
         .status_update_addr       (status_update_addr),
         .status_update_value      (status_update_value),
         .status_update_ok         (status_update_ok),
+        .service_period_update_valid(service_period_update_valid),
+        .service_period_update_addr(service_period_update_addr),
+        .service_period_update_value(service_period_update_value),
+        .service_result_valid     (service_rsp_valid),
+        .service_result_addr      (service_rsp_addr),
+        .service_result_nack      (service_rsp_nack),
         .query_addr               (query_addr),
         .query_found              (query_found),
         .query_pid                (query_pid),
@@ -149,12 +170,20 @@ module i3c_ctrl_top #(
         .query_event_mask         (query_event_mask),
         .query_reset_action       (query_reset_action),
         .query_status             (query_status),
+        .query_service_period     (query_service_period),
+        .query_service_count      (query_service_count),
+        .query_success_count      (query_success_count),
+        .query_error_count        (query_error_count),
+        .query_consecutive_failures(query_consecutive_failures),
+        .query_last_service_tag   (query_last_service_tag),
+        .query_due_now            (query_due_now),
         .scan_index               (scan_index),
         .scan_valid               (scan_valid),
         .scan_addr                (scan_addr),
         .scan_class               (scan_class),
         .scan_enabled             (scan_enabled),
         .scan_health_fault        (scan_health_fault),
+        .scan_due                 (scan_due),
         .assign_valid             (),
         .assign_dynamic_addr      (),
         .daa_endpoint_count       (),
@@ -185,6 +214,7 @@ module i3c_ctrl_top #(
         .scan_class       (scan_class),
         .scan_enabled     (scan_enabled),
         .scan_health_fault(scan_health_fault),
+        .scan_due         (scan_due),
         .req_valid        (sched_req_valid),
         .req_addr         (sched_req_addr),
         .req_class        (sched_req_class),

@@ -16,6 +16,7 @@ module i3c_ctrl_scheduler #(
     input  wire [1:0]                     scan_class,
     input  wire                           scan_enabled,
     input  wire                           scan_health_fault,
+    input  wire                           scan_due,
 
     output reg                            req_valid,
     output reg  [6:0]                     req_addr,
@@ -81,7 +82,7 @@ module i3c_ctrl_scheduler #(
 
                 ST_SCAN: begin
                     busy <= 1'b1;
-                    if (scan_valid && scan_enabled && !scan_health_fault) begin
+                    if (scan_valid && scan_enabled && !scan_health_fault && scan_due) begin
                         req_valid <= 1'b1;
                         req_addr  <= scan_addr;
                         req_class <= scan_class;

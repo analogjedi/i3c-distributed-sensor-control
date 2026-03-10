@@ -13,6 +13,9 @@ module tb_i3c_ctrl_top_service;
     reg        enable_update_valid;
     reg [6:0]  enable_update_addr;
     reg        enable_update_value;
+    reg        service_period_update_valid;
+    reg [6:0]  service_period_update_addr;
+    reg [7:0]  service_period_update_value;
     reg        status_update_valid;
     reg [6:0]  status_update_addr;
     reg [15:0] status_update_value;
@@ -25,6 +28,12 @@ module tb_i3c_ctrl_top_service;
     wire [1:0] query_class;
     wire       query_enabled;
     wire       query_health_fault;
+    wire [7:0] query_service_period;
+    wire [15:0] query_service_count;
+    wire [15:0] query_success_count;
+    wire [15:0] query_error_count;
+    wire [7:0] query_consecutive_failures;
+    wire       query_due_now;
     wire [3:0] endpoint_count;
     wire       scheduler_busy;
     wire       scheduler_missed_slot;
@@ -88,6 +97,7 @@ module tb_i3c_ctrl_top_service;
         .rst_n                    (rst_n),
         .clear_tables             (1'b0),
         .default_endpoint_enable  (1'b1),
+        .default_service_period   (8'd1),
         .discover_valid           (discover_valid),
         .discover_pid             (discover_pid),
         .discover_bcr             (discover_bcr),
@@ -102,6 +112,9 @@ module tb_i3c_ctrl_top_service;
         .enable_update_valid      (enable_update_valid),
         .enable_update_addr       (enable_update_addr),
         .enable_update_value      (enable_update_value),
+        .service_period_update_valid(service_period_update_valid),
+        .service_period_update_addr(service_period_update_addr),
+        .service_period_update_value(service_period_update_value),
         .reset_action_update_valid(1'b0),
         .reset_action_update_addr (7'h00),
         .reset_action_update_value(8'h00),
@@ -123,6 +136,13 @@ module tb_i3c_ctrl_top_service;
         .query_event_mask         (),
         .query_reset_action       (),
         .query_status             (),
+        .query_service_period     (query_service_period),
+        .query_service_count      (query_service_count),
+        .query_success_count      (query_success_count),
+        .query_error_count        (query_error_count),
+        .query_consecutive_failures(query_consecutive_failures),
+        .query_last_service_tag   (),
+        .query_due_now            (query_due_now),
         .endpoint_count           (endpoint_count),
         .policy_table_full        (),
         .policy_update_miss       (),
@@ -276,6 +296,9 @@ module tb_i3c_ctrl_top_service;
         enable_update_valid = 1'b0;
         enable_update_addr = 7'h00;
         enable_update_value = 1'b0;
+        service_period_update_valid = 1'b0;
+        service_period_update_addr = 7'h00;
+        service_period_update_value = 8'h00;
         status_update_valid = 1'b0;
         status_update_addr = 7'h00;
         status_update_value = 16'h0000;
@@ -315,31 +338,46 @@ module tb_i3c_ctrl_top_service;
         assign_target_addr(3, 7'h13);
         wait_endpoint_count(4'd4);
 
+        set_service_period(7'h10, 8'd2);
+        set_service_period(7'h13, 8'd3);
+
         set_enable(7'h11, 1'b0);
         set_fault(7'h12, 1'b1);
-        check_policy_state(7'h11, 2'd2, 1'b0, 1'b0);
-        check_policy_state(7'h12, 2'd1, 1'b1, 1'b1);
+        check_policy_state(7'h11, 2'd2, 1'b0, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h12, 2'd1, 1'b1, 1'b1, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
 
         expect_service(7'h10, 2'd3, 8'hA0);
         expect_service(7'h13, 2'd2, 8'hD3);
+        check_policy_state(7'h10, 2'd3, 1'b1, 1'b0, 8'd2, 16'd1, 16'd1, 16'd0, 8'd0, 1'b0);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd3, 16'd1, 16'd1, 16'd0, 8'd0, 1'b0);
 
         set_enable(7'h11, 1'b1);
         set_fault(7'h12, 1'b0);
-        check_policy_state(7'h11, 2'd2, 1'b1, 1'b0);
-        check_policy_state(7'h12, 2'd1, 1'b1, 1'b0);
+        check_policy_state(7'h11, 2'd2, 1'b1, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h12, 2'd1, 1'b1, 1'b0, 8'd1, 16'd0, 16'd0, 16'd0, 8'd0, 1'b1);
 
         expect_service(7'h10, 2'd3, 8'hA0);
         expect_service(7'h11, 2'd2, 8'hB1);
         expect_service(7'h12, 2'd1, 8'hC2);
+        expect_service(7'h13, 2'd2, 8'hD3);
+        check_policy_state(7'h10, 2'd3, 1'b1, 1'b0, 8'd2, 16'd2, 16'd2, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h11, 2'd2, 1'b1, 1'b0, 8'd1, 16'd1, 16'd1, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h12, 2'd1, 1'b1, 1'b0, 8'd1, 16'd1, 16'd1, 16'd0, 8'd0, 1'b1);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd3, 16'd2, 16'd2, 16'd0, 8'd0, 1'b0);
+
+        assign_target_addr(3, 7'h23);
+        set_service_period(7'h13, 8'd1);
+        set_enable(7'h10, 1'b0);
+        set_enable(7'h11, 1'b0);
+        set_enable(7'h12, 1'b0);
+        expect_service_nack(7'h13, 2'd2);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd3, 16'd2, 16'd1, 8'd1, 1'b0);
 
         if (!saw_read_0 || !saw_read_1 || !saw_read_2 || !saw_read_3) begin
             $display("FAIL: expected each target to observe scheduled read service");
             $finish(1);
         end
 
-        set_enable(7'h10, 1'b0);
-        set_enable(7'h11, 1'b0);
-        set_enable(7'h12, 1'b0);
         set_enable(7'h13, 1'b0);
         expect_missed_slot;
 
@@ -414,6 +452,20 @@ module tb_i3c_ctrl_top_service;
         end
     endtask
 
+    task set_service_period;
+        input [6:0] addr;
+        input [7:0] value;
+        begin
+            @(posedge clk);
+            service_period_update_addr  <= addr;
+            service_period_update_value <= value;
+            service_period_update_valid <= 1'b1;
+            @(posedge clk);
+            service_period_update_valid <= 1'b0;
+            @(posedge clk);
+        end
+    endtask
+
     task set_fault;
         input [6:0] addr;
         input faulted;
@@ -450,14 +502,28 @@ module tb_i3c_ctrl_top_service;
         input [1:0] expected_class;
         input expected_enabled;
         input expected_fault;
+        input [7:0] expected_period;
+        input [15:0] expected_service_count;
+        input [15:0] expected_success_count;
+        input [15:0] expected_error_count;
+        input [7:0] expected_consecutive_failures;
+        input expected_due_now;
         begin
             query_addr <= expected_addr;
             @(posedge clk);
             if (!query_found || (query_class != expected_class) ||
                 (query_enabled != expected_enabled) ||
-                (query_health_fault != expected_fault)) begin
-                $display("FAIL: policy mismatch addr=0x%02h class=%0d enabled=%0d fault=%0d",
-                         expected_addr, query_class, query_enabled, query_health_fault);
+                (query_health_fault != expected_fault) ||
+                (query_service_period != expected_period) ||
+                (query_service_count != expected_service_count) ||
+                (query_success_count != expected_success_count) ||
+                (query_error_count != expected_error_count) ||
+                (query_consecutive_failures != expected_consecutive_failures) ||
+                (query_due_now != expected_due_now)) begin
+                $display("FAIL: policy mismatch addr=0x%02h class=%0d enabled=%0d fault=%0d period=%0d service=%0d success=%0d error=%0d failrun=%0d due=%0d",
+                         expected_addr, query_class, query_enabled, query_health_fault,
+                         query_service_period, query_service_count, query_success_count,
+                         query_error_count, query_consecutive_failures, query_due_now);
                 $finish(1);
             end
         end
@@ -491,6 +557,28 @@ module tb_i3c_ctrl_top_service;
                 $display("FAIL: service mismatch valid=%0d nack=%0d addr=0x%02h class=%0d data=0x%02h expected_addr=0x%02h expected_class=%0d expected_data=0x%02h",
                          service_rsp_valid, service_rsp_nack, service_rsp_addr, service_rsp_class,
                          service_rsp_rdata, expected_addr, expected_class, expected_data);
+                $finish(1);
+            end
+        end
+    endtask
+
+    task expect_service_nack;
+        input [6:0] expected_addr;
+        input [1:0] expected_class;
+        integer wait_cycles;
+        begin
+            pulse_schedule_tick;
+            wait_cycles = 0;
+            while (!service_rsp_valid && (wait_cycles < 5000)) begin
+                @(posedge clk);
+                wait_cycles = wait_cycles + 1;
+            end
+            if (!service_rsp_valid || !service_rsp_nack ||
+                (service_rsp_addr != expected_addr) ||
+                (service_rsp_class != expected_class)) begin
+                $display("FAIL: expected NACK service addr=0x%02h class=%0d valid=%0d nack=%0d got_addr=0x%02h got_class=%0d",
+                         expected_addr, expected_class, service_rsp_valid, service_rsp_nack,
+                         service_rsp_addr, service_rsp_class);
                 $finish(1);
             end
         end

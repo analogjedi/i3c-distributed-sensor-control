@@ -57,16 +57,18 @@ Implemented and regression-backed:
 - controller-side endpoint policy table with per-address:
   - class
   - default enable state
+  - service period and due-state eligibility
   - event-mask
   - reset action
   - last status
   - basic health bits
-- first round-robin scheduler stub that consumes integrated policy state
+  - service count, success count, error count, consecutive failures, and last service tag
+- cadence-aware round-robin scheduler path that consumes integrated policy state and drives real one-byte read transactions through `rtl/i3c_ctrl_top.v`
 
 Not yet implemented:
 
 - additional reset/status CCCs beyond the current addressing and event-control subset
-- scheduler-to-transaction integration and richer controller service state beyond current class/enable/health/status bookkeeping
+- broader scheduled transaction templates beyond the current one-byte read baseline
 - IBI
 - reset/recovery protocol flow beyond basic address-state control
 
@@ -277,8 +279,8 @@ Current status:
 - multi-target `ENTDAA` sequencing is implemented and regression-backed
 - controller inventory now retains PID/BCR/DCR
 - DAA discovery now auto-populates controller policy records
-- controller policy now tracks per-address class, default enable state, event-enable masks, reset action, last status, and basic health bits
-- a first controller scheduler path now walks integrated policy state, emits round-robin service requests, and drives real one-byte read transactions through `rtl/i3c_ctrl_top.v`
+- controller policy now tracks per-address class, default enable state, service period, due-state eligibility, event-enable masks, reset action, last status, basic health bits, service count, success count, error count, consecutive failures, and last service tag
+- a cadence-aware controller scheduler path now walks integrated policy state, emits round-robin service requests only for due endpoints, and drives real one-byte read transactions through `rtl/i3c_ctrl_top.v`
 - `ENTDAA` stress coverage now reaches a six-endpoint exact-fit baseline
 
 Exit criteria:
@@ -452,7 +454,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. add richer scheduler-facing service statistics and per-endpoint cadence control
-2. expand scheduled transactions beyond the current one-byte read baseline
-3. add additional recovery/status CCC coverage beyond the current baseline
-4. only then expand into reset-policy CCCs and IBI control
+1. expand scheduled transactions beyond the current one-byte read baseline
+2. add additional recovery/status CCC coverage beyond the current baseline
+3. deepen reset/error policy and recovery sequencing
+4. only then expand into reset-policy closure and selective IBI control
