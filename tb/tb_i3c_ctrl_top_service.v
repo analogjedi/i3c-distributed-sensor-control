@@ -13,6 +13,9 @@ module tb_i3c_ctrl_top_service;
     reg        enable_update_valid;
     reg [6:0]  enable_update_addr;
     reg        enable_update_value;
+    reg        reset_action_update_valid;
+    reg [6:0]  reset_action_update_addr;
+    reg [7:0]  reset_action_update_value;
     reg        service_period_update_valid;
     reg [6:0]  service_period_update_addr;
     reg [7:0]  service_period_update_value;
@@ -132,9 +135,9 @@ module tb_i3c_ctrl_top_service;
         .service_period_update_valid(service_period_update_valid),
         .service_period_update_addr(service_period_update_addr),
         .service_period_update_value(service_period_update_value),
-        .reset_action_update_valid(1'b0),
-        .reset_action_update_addr (7'h00),
-        .reset_action_update_value(8'h00),
+        .reset_action_update_valid(reset_action_update_valid),
+        .reset_action_update_addr (reset_action_update_addr),
+        .reset_action_update_value(reset_action_update_value),
         .status_update_valid      (status_update_valid),
         .status_update_addr       (status_update_addr),
         .status_update_value      (status_update_value),
@@ -350,6 +353,9 @@ module tb_i3c_ctrl_top_service;
         enable_update_valid = 1'b0;
         enable_update_addr = 7'h00;
         enable_update_value = 1'b0;
+        reset_action_update_valid = 1'b0;
+        reset_action_update_addr = 7'h00;
+        reset_action_update_value = 8'h00;
         service_period_update_valid = 1'b0;
         service_period_update_addr = 7'h00;
         service_period_update_value = 8'h00;
@@ -449,6 +455,19 @@ module tb_i3c_ctrl_top_service;
         check_selector_state(3, 8'd3, 8'h20);
         check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd5, 16'd3, 16'd2, 8'd0, 1'b0);
 
+        set_reset_action(7'h13, 8'h01);
+        assign_target_addr(3, 7'h23);
+        expect_service_nack(7'h13, 2'd2);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd6, 16'd3, 16'd3, 8'd1, 1'b0);
+        expect_service_nack(7'h13, 2'd2);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b1, 8'd1, 16'd7, 16'd3, 16'd4, 8'd2, 1'b0);
+        assign_target_addr(3, 7'h13);
+        expect_missed_slot;
+        pulse_schedule_tick;
+        expect_service(7'h13, 2'd2, 8'd3, 32'h00D3D2D1);
+        check_selector_state(3, 8'd4, 8'h20);
+        check_policy_state(7'h13, 2'd2, 1'b1, 1'b0, 8'd1, 16'd8, 16'd4, 16'd4, 8'd0, 1'b0);
+
         if (!saw_read_0 || !saw_read_1 || !saw_read_2 || !saw_read_3) begin
             $display("FAIL: expected each target to observe scheduled read service");
             $finish(1);
@@ -538,6 +557,20 @@ module tb_i3c_ctrl_top_service;
             service_period_update_valid <= 1'b1;
             @(posedge clk);
             service_period_update_valid <= 1'b0;
+            @(posedge clk);
+        end
+    endtask
+
+    task set_reset_action;
+        input [6:0] addr;
+        input [7:0] value;
+        begin
+            @(posedge clk);
+            reset_action_update_addr  <= addr;
+            reset_action_update_value <= value;
+            reset_action_update_valid <= 1'b1;
+            @(posedge clk);
+            reset_action_update_valid <= 1'b0;
             @(posedge clk);
         end
     endtask

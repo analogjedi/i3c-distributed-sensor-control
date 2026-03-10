@@ -37,12 +37,13 @@ SIM_SCHEDULER_OUT := simv_scheduler
 SIM_CTRL_TOP_SERVICE_OUT := simv_ctrl_top_service
 SIM_EVENT_POLICY_CCC_OUT := simv_event_policy_ccc
 SIM_RESET_STATUS_POLICY_OUT := simv_reset_status_policy
+SIM_RECOVERY_SEQUENCE_OUT := simv_recovery_sequence
 
-.PHONY: sim sim-rw sim-nack sim-target sim-daa sim-ccc sim-direct-ccc-write sim-direct-ccc-read sim-setdasa sim-getpid sim-getbcrdcr sim-getstatus sim-entdaa sim-entdaa-multi sim-entdaa-stress sim-scheduler sim-ctrl-top-service sim-event-policy-ccc sim-reset-status-policy test clean
+.PHONY: sim sim-rw sim-nack sim-target sim-daa sim-ccc sim-direct-ccc-write sim-direct-ccc-read sim-setdasa sim-getpid sim-getbcrdcr sim-getstatus sim-entdaa sim-entdaa-multi sim-entdaa-stress sim-scheduler sim-ctrl-top-service sim-event-policy-ccc sim-reset-status-policy sim-recovery-sequence test clean
 
 sim: test
 
-test: sim-rw sim-nack sim-target sim-daa sim-ccc sim-direct-ccc-write sim-direct-ccc-read sim-setdasa sim-getpid sim-getbcrdcr sim-getstatus sim-entdaa sim-entdaa-multi sim-entdaa-stress sim-scheduler sim-ctrl-top-service sim-event-policy-ccc sim-reset-status-policy
+test: sim-rw sim-nack sim-target sim-daa sim-ccc sim-direct-ccc-write sim-direct-ccc-read sim-setdasa sim-getpid sim-getbcrdcr sim-getstatus sim-entdaa sim-entdaa-multi sim-entdaa-stress sim-scheduler sim-ctrl-top-service sim-event-policy-ccc sim-reset-status-policy sim-recovery-sequence
 
 sim-rw:
 	iverilog -g2012 -Wall -o $(SIM_RW_OUT) $(RTL_SRCS) $(COMMON_TB_SRCS) tb/tb_i3c_sdr_controller.v
@@ -116,5 +117,9 @@ sim-reset-status-policy:
 	iverilog -g2012 -Wall -o $(SIM_RESET_STATUS_POLICY_OUT) $(RTL_SRCS) tb/tb_i3c_reset_status_policy.v
 	vvp $(SIM_RESET_STATUS_POLICY_OUT)
 
+sim-recovery-sequence:
+	iverilog -g2012 -Wall -o $(SIM_RECOVERY_SEQUENCE_OUT) $(RTL_SRCS) tb/tb_i3c_recovery_sequence.v
+	vvp $(SIM_RECOVERY_SEQUENCE_OUT)
+
 clean:
-	rm -f $(SIM_RW_OUT) $(SIM_NACK_OUT) $(SIM_TARGET_OUT) $(SIM_DAA_OUT) $(SIM_CCC_OUT) $(SIM_DIRECT_CCC_WRITE_OUT) $(SIM_DIRECT_CCC_READ_OUT) $(SIM_SETDASA_OUT) $(SIM_GETPID_OUT) $(SIM_GETBCRDCR_OUT) $(SIM_GETSTATUS_OUT) $(SIM_ENTDAA_OUT) $(SIM_ENTDAA_MULTI_OUT) $(SIM_ENTDAA_STRESS_OUT) $(SIM_SCHEDULER_OUT) $(SIM_CTRL_TOP_SERVICE_OUT) $(SIM_EVENT_POLICY_CCC_OUT) $(SIM_RESET_STATUS_POLICY_OUT) tb_i3c_sdr_controller.vcd tb_i3c_sdr_nack.vcd tb_i3c_target_transport.vcd tb_i3c_broadcast_ccc.vcd tb_i3c_direct_ccc_write.vcd tb_i3c_direct_ccc_read.vcd tb_i3c_setdasa.vcd tb_i3c_getpid.vcd tb_i3c_getbcrdcr.vcd tb_i3c_getstatus.vcd tb_i3c_entdaa.vcd tb_i3c_entdaa_multi.vcd tb_i3c_entdaa_stress.vcd tb_i3c_scheduler.vcd tb_i3c_ctrl_top_service.vcd tb_i3c_event_policy_ccc.vcd tb_i3c_reset_status_policy.vcd
+	rm -f $(SIM_RW_OUT) $(SIM_NACK_OUT) $(SIM_TARGET_OUT) $(SIM_DAA_OUT) $(SIM_CCC_OUT) $(SIM_DIRECT_CCC_WRITE_OUT) $(SIM_DIRECT_CCC_READ_OUT) $(SIM_SETDASA_OUT) $(SIM_GETPID_OUT) $(SIM_GETBCRDCR_OUT) $(SIM_GETSTATUS_OUT) $(SIM_ENTDAA_OUT) $(SIM_ENTDAA_MULTI_OUT) $(SIM_ENTDAA_STRESS_OUT) $(SIM_SCHEDULER_OUT) $(SIM_CTRL_TOP_SERVICE_OUT) $(SIM_EVENT_POLICY_CCC_OUT) $(SIM_RESET_STATUS_POLICY_OUT) $(SIM_RECOVERY_SEQUENCE_OUT) tb_i3c_sdr_controller.vcd tb_i3c_sdr_nack.vcd tb_i3c_target_transport.vcd tb_i3c_broadcast_ccc.vcd tb_i3c_direct_ccc_write.vcd tb_i3c_direct_ccc_read.vcd tb_i3c_setdasa.vcd tb_i3c_getpid.vcd tb_i3c_getbcrdcr.vcd tb_i3c_getstatus.vcd tb_i3c_entdaa.vcd tb_i3c_entdaa_multi.vcd tb_i3c_entdaa_stress.vcd tb_i3c_scheduler.vcd tb_i3c_ctrl_top_service.vcd tb_i3c_event_policy_ccc.vcd tb_i3c_reset_status_policy.vcd tb_i3c_recovery_sequence.vcd

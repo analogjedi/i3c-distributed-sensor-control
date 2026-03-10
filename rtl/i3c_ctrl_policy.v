@@ -2,7 +2,10 @@
 
 module i3c_ctrl_policy #(
     parameter integer MAX_ENDPOINTS = 8,
-    parameter integer AUTO_FAULT_THRESHOLD = 2
+    parameter integer AUTO_FAULT_THRESHOLD = 2,
+    parameter integer RECOVERY_RETRY_COOLDOWN = 2,
+    parameter integer RECOVERY_RESET_COOLDOWN = 4,
+    parameter integer RECOVERY_MAX_AUTO_ATTEMPTS = 2
 ) (
     input  wire                           default_endpoint_enable,
     input  wire [7:0]                     default_service_period,
@@ -66,6 +69,9 @@ module i3c_ctrl_policy #(
     output reg  [7:0]                     query_consecutive_failures,
     output reg  [15:0]                    query_last_service_tag,
     output reg                            query_due_now,
+    output reg  [1:0]                     query_recovery_state,
+    output reg  [7:0]                     query_recovery_countdown,
+    output reg  [7:0]                     query_recovery_attempts,
 
     input  wire [$clog2(MAX_ENDPOINTS)-1:0] scan_index,
     output reg                            scan_valid,
@@ -84,6 +90,13 @@ module i3c_ctrl_policy #(
 
     integer i;
     localparam [7:0] AUTO_FAULT_THRESHOLD_U8 = AUTO_FAULT_THRESHOLD;
+    localparam [7:0] RECOVERY_RETRY_COOLDOWN_U8 = RECOVERY_RETRY_COOLDOWN;
+    localparam [7:0] RECOVERY_RESET_COOLDOWN_U8 = RECOVERY_RESET_COOLDOWN;
+    localparam [7:0] RECOVERY_MAX_AUTO_ATTEMPTS_U8 = RECOVERY_MAX_AUTO_ATTEMPTS;
+    localparam [1:0] RECOVERY_IDLE       = 2'd0;
+    localparam [1:0] RECOVERY_RETRY_WAIT = 2'd1;
+    localparam [1:0] RECOVERY_RESET_WAIT = 2'd2;
+    localparam [1:0] RECOVERY_ESCALATED  = 2'd3;
     reg       add_seen_match;
     reg       direct_seen_match;
     reg [7:0] updated_mask;
@@ -105,6 +118,10 @@ module i3c_ctrl_policy #(
     reg [15:0] error_count_table[0:MAX_ENDPOINTS-1];
     reg [7:0]  consecutive_failures_table[0:MAX_ENDPOINTS-1];
     reg [15:0] last_service_tag_table[0:MAX_ENDPOINTS-1];
+    reg [1:0]  recovery_state_table[0:MAX_ENDPOINTS-1];
+    reg [7:0]  recovery_countdown_table[0:MAX_ENDPOINTS-1];
+    reg [7:0]  recovery_attempts_table[0:MAX_ENDPOINTS-1];
+    reg        recovery_forced_disable_table[0:MAX_ENDPOINTS-1];
     reg [15:0] schedule_tag;
 
     function [1:0] derive_class;
@@ -142,6 +159,9 @@ module i3c_ctrl_policy #(
         query_consecutive_failures = 8'h00;
         query_last_service_tag = 16'h0000;
         query_due_now = 1'b0;
+        query_recovery_state = RECOVERY_IDLE;
+        query_recovery_countdown = 8'h00;
+        query_recovery_attempts = 8'h00;
         scan_valid       = 1'b0;
         scan_addr        = 7'h00;
         scan_class       = 2'd0;
@@ -168,6 +188,9 @@ module i3c_ctrl_policy #(
                 query_error_count = error_count_table[i];
                 query_consecutive_failures = consecutive_failures_table[i];
                 query_last_service_tag = last_service_tag_table[i];
+                query_recovery_state = recovery_state_table[i];
+                query_recovery_countdown = recovery_countdown_table[i];
+                query_recovery_attempts = recovery_attempts_table[i];
                 query_due_now = (service_count_table[i] == 16'h0000) ||
                                 ((schedule_tag - last_service_tag_table[i]) >= service_period_table[i]);
             end
@@ -210,11 +233,30 @@ module i3c_ctrl_policy #(
                 error_count_table[i] <= 16'h0000;
                 consecutive_failures_table[i] <= 8'h00;
                 last_service_tag_table[i] <= 16'h0000;
+                recovery_state_table[i] <= RECOVERY_IDLE;
+                recovery_countdown_table[i] <= 8'h00;
+                recovery_attempts_table[i] <= 8'h00;
+                recovery_forced_disable_table[i] <= 1'b0;
             end
         end else begin
             policy_update_miss <= 1'b0;
             if (schedule_tick) begin
                 schedule_tag <= schedule_tag + 1'b1;
+                for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
+                    if ((i < endpoint_count) &&
+                        ((recovery_state_table[i] == RECOVERY_RETRY_WAIT) ||
+                         (recovery_state_table[i] == RECOVERY_RESET_WAIT)) &&
+                        (recovery_countdown_table[i] != 8'h00)) begin
+                        if (recovery_countdown_table[i] == 8'd1) begin
+                            recovery_countdown_table[i] <= 8'h00;
+                            recovery_state_table[i] <= RECOVERY_IDLE;
+                            health_fault_table[i] <= 1'b0;
+                            consecutive_failures_table[i] <= 8'h00;
+                        end else begin
+                            recovery_countdown_table[i] <= recovery_countdown_table[i] - 1'b1;
+                        end
+                    end
+                end
             end
 
             if (clear_table) begin
@@ -242,6 +284,10 @@ module i3c_ctrl_policy #(
                     error_count_table[i] <= 16'h0000;
                     consecutive_failures_table[i] <= 8'h00;
                     last_service_tag_table[i] <= 16'h0000;
+                    recovery_state_table[i] <= RECOVERY_IDLE;
+                    recovery_countdown_table[i] <= 8'h00;
+                    recovery_attempts_table[i] <= 8'h00;
+                    recovery_forced_disable_table[i] <= 1'b0;
                 end
             end else if (endpoint_add_valid) begin
                 add_seen_match = 1'b0;
@@ -279,6 +325,10 @@ module i3c_ctrl_policy #(
                         error_count_table[endpoint_count] <= 16'h0000;
                         consecutive_failures_table[endpoint_count] <= 8'h00;
                         last_service_tag_table[endpoint_count] <= 16'h0000;
+                        recovery_state_table[endpoint_count] <= RECOVERY_IDLE;
+                        recovery_countdown_table[endpoint_count] <= 8'h00;
+                        recovery_attempts_table[endpoint_count] <= 8'h00;
+                        recovery_forced_disable_table[endpoint_count] <= 1'b0;
                         endpoint_count                   <= endpoint_count + 1'b1;
                         table_full                       <= 1'b0;
                         last_event_mask                  <= 8'h00;
@@ -368,6 +418,16 @@ module i3c_ctrl_policy #(
                         health_fault_table[i] <= !status_update_ok;
                         if (status_update_ok) begin
                             consecutive_failures_table[i] <= 8'h00;
+                            recovery_state_table[i] <= RECOVERY_IDLE;
+                            recovery_countdown_table[i] <= 8'h00;
+                            recovery_attempts_table[i] <= 8'h00;
+                            if (recovery_forced_disable_table[i]) begin
+                                enabled_table[i] <= 1'b1;
+                                recovery_forced_disable_table[i] <= 1'b0;
+                            end
+                        end else begin
+                            recovery_state_table[i] <= RECOVERY_ESCALATED;
+                            recovery_countdown_table[i] <= 8'h00;
                         end
                         direct_seen_match = 1'b1;
                     end
@@ -388,11 +448,57 @@ module i3c_ctrl_policy #(
                             last_seen_ok_table[i] <= 1'b0;
                             if ((consecutive_failures_table[i] + 1'b1) >= AUTO_FAULT_THRESHOLD_U8) begin
                                 health_fault_table[i] <= 1'b1;
+                                // Low reset-action bits define the local recovery ladder:
+                                // 00 hold fault until explicit clear
+                                // 01 timed retry window
+                                // 10 reset-style cooldown with hard-disable escalation
+                                // 11 immediate forced disable
+                                case (reset_action_table[i][1:0])
+                                    2'd1: begin
+                                        if (recovery_attempts_table[i] < RECOVERY_MAX_AUTO_ATTEMPTS_U8) begin
+                                            recovery_state_table[i] <= RECOVERY_RETRY_WAIT;
+                                            recovery_countdown_table[i] <= RECOVERY_RETRY_COOLDOWN_U8;
+                                            recovery_attempts_table[i] <= recovery_attempts_table[i] + 1'b1;
+                                        end else begin
+                                            recovery_state_table[i] <= RECOVERY_ESCALATED;
+                                            recovery_countdown_table[i] <= 8'h00;
+                                        end
+                                    end
+                                    2'd2: begin
+                                        if (recovery_attempts_table[i] < RECOVERY_MAX_AUTO_ATTEMPTS_U8) begin
+                                            recovery_state_table[i] <= RECOVERY_RESET_WAIT;
+                                            recovery_countdown_table[i] <= RECOVERY_RESET_COOLDOWN_U8;
+                                            recovery_attempts_table[i] <= recovery_attempts_table[i] + 1'b1;
+                                        end else begin
+                                            recovery_state_table[i] <= RECOVERY_ESCALATED;
+                                            recovery_countdown_table[i] <= 8'h00;
+                                            enabled_table[i] <= 1'b0;
+                                            recovery_forced_disable_table[i] <= 1'b1;
+                                        end
+                                    end
+                                    2'd3: begin
+                                        recovery_state_table[i] <= RECOVERY_ESCALATED;
+                                        recovery_countdown_table[i] <= 8'h00;
+                                        enabled_table[i] <= 1'b0;
+                                        recovery_forced_disable_table[i] <= 1'b1;
+                                    end
+                                    default: begin
+                                        recovery_state_table[i] <= RECOVERY_ESCALATED;
+                                        recovery_countdown_table[i] <= 8'h00;
+                                    end
+                                endcase
                             end
                         end else begin
                             success_count_table[i] <= success_count_table[i] + 1'b1;
                             consecutive_failures_table[i] <= 8'h00;
                             last_seen_ok_table[i] <= 1'b1;
+                            recovery_state_table[i] <= RECOVERY_IDLE;
+                            recovery_countdown_table[i] <= 8'h00;
+                            recovery_attempts_table[i] <= 8'h00;
+                            if (recovery_forced_disable_table[i]) begin
+                                enabled_table[i] <= 1'b1;
+                                recovery_forced_disable_table[i] <= 1'b0;
+                            end
                         end
                         direct_seen_match = 1'b1;
                     end

@@ -280,8 +280,8 @@ Current status:
 - multi-target `ENTDAA` sequencing is implemented and regression-backed
 - controller inventory now retains PID/BCR/DCR
 - DAA discovery now auto-populates controller policy records
-- controller policy now tracks per-address class, default enable state, service period, due-state eligibility, event-enable masks, reset action, last status, basic health bits, service count, success count, error count, consecutive failures, and last service tag
-- repeated scheduled-service NACKs now auto-latch endpoint health faults until explicit clear
+- controller policy now tracks per-address class, default enable state, service period, due-state eligibility, event-enable masks, reset action, last status, basic health bits, service count, success count, error count, consecutive failures, last service tag, and explicit recovery state/countdown/attempt bookkeeping
+- repeated scheduled-service NACKs now drive reset-action-keyed recovery sequencing with timed retry windows, reset-style cooldown, forced-disable escalation, and explicit clear
 - a cadence-aware controller scheduler path now walks integrated policy state, emits round-robin service requests only for due endpoints, and drives class-specific write-then-read service templates plus class-sized multi-byte reads through `rtl/i3c_ctrl_top.v`
 - `ENTDAA` stress coverage now reaches a six-endpoint exact-fit baseline
 - target-side recovery/status regressions now cover `RSTACT`, `GETSTATUS`, `RSTDAA`, and `SETAASA` across mirrored controller policy tracking
@@ -309,7 +309,7 @@ Current status:
 - controller-side direct CCC framing is implemented in a standalone sequencer
 - target-side direct CCC decode now supports `SETDASA`, `GETPID`, `GETBCR`, `GETDCR`, `GETSTATUS`, `RSTACT`, `ENEC`, and `DISEC`
 - controller-side policy tracking now covers event masks, reset action, and last-known status
-- the next CCC milestone is deeper reset/error sequencing beyond the current recovery/status baseline
+- the next CCC milestone is controller-driven address-state recovery/rekeying beyond the current recovery/status baseline
 
 Minimum CCC set to lock before coding:
 - addressing support needed for chosen boot flow
@@ -457,7 +457,7 @@ The next concrete repository tasks should be:
 
 Updated next concrete repository tasks:
 
-1. deepen reset/error policy and recovery sequencing beyond repeated-failure fault latching
-2. decide whether to mirror address-state transitions directly into controller inventory/policy rekeying
-3. extend scheduled service beyond the current selector-plus-read baseline into richer register write/update templates
+1. decide how controller-driven address-state recovery should rekey inventory/policy after `RSTDAA`-style flows
+2. extend scheduled service beyond the current selector-plus-read baseline into richer register write/update templates
+3. decide whether additional recovery-oriented CCCs are needed beyond the current reset/status subset
 4. only then expand into reset-policy closure and selective IBI control
