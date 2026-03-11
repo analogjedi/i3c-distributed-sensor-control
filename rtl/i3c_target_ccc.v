@@ -463,6 +463,8 @@ module i3c_target_ccc #(
                                 read_len     <= 4'd2;
                                 read_shift   <= status_word[15:8];
                             end else begin
+                                pending_direct_ccc <= 1'b0;
+                                transport_holdoff  <= 1'b0;
                                 state <= ST_IDLE;
                             end
                         end

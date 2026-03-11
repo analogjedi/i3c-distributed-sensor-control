@@ -11,6 +11,9 @@ The intended end-to-end system is:
 Current reference system configuration in the repo:
 
 - 1 controller plus 5 sensor endpoints
+- static-assisted boot for the FPGA validation stack
+  static target addresses `0x30`..`0x34`
+  controller-assigned dynamic addresses `0x10`..`0x14`
 - identical endpoint service policy with equal-rate polling
 - 4 parallel sampled sensor channels per endpoint
 - 10-byte payload per endpoint service
@@ -36,12 +39,31 @@ flowchart LR
 
 Example-system behavior in the current repo:
 
-- controller discovers or provisions 5 targets and assigns active dynamic addresses
+- controller uses on-bus `SETDASA` to assign active dynamic addresses to 5 targets
 - controller configures identical service shape for all 5 endpoints
 - each service cycle writes selector `0x40`
 - each readback returns 10 bytes per endpoint
 - bytes are modeled as four 16-bit sensor samples plus temperature and misc/status
 - scheduler polls all 5 endpoints at the same configured cadence
+
+## FPGA Validation Stack
+
+The FPGA-test implementation is kept separate from the core protocol RTL in:
+
+- [rtl/fpga_test/i3c_demo_rate_tick.v](/Users/jhaas/Development/Digital_Design/rtl/fpga_test/i3c_demo_rate_tick.v)
+- [rtl/fpga_test/i3c_sensor_frame_gen.v](/Users/jhaas/Development/Digital_Design/rtl/fpga_test/i3c_sensor_frame_gen.v)
+- [rtl/fpga_test/i3c_sensor_target_demo.v](/Users/jhaas/Development/Digital_Design/rtl/fpga_test/i3c_sensor_target_demo.v)
+- [rtl/fpga_test/i3c_sensor_controller_demo.v](/Users/jhaas/Development/Digital_Design/rtl/fpga_test/i3c_sensor_controller_demo.v)
+- [rtl/fpga_test/spartan7_i3c_controller_demo_top.v](/Users/jhaas/Development/Digital_Design/rtl/fpga_test/spartan7_i3c_controller_demo_top.v)
+- [rtl/fpga_test/spartan7_i3c_target_demo_top.v](/Users/jhaas/Development/Digital_Design/rtl/fpga_test/spartan7_i3c_target_demo_top.v)
+
+Those files implement:
+
+- deterministic, time-varying synthetic sensor frames on each target
+- target-side signatures that encode endpoint identity and frame progression
+- controller-side static-assisted bus bring-up using direct CCC `SETDASA`
+- controller-side capture buffers exposing the latest payload per endpoint to higher-level logic
+- board-facing Spartan-7 wrappers for controller-side and target-side FPGA prototype use
 
 ## Spartan-7 Test Role
 
@@ -65,19 +87,19 @@ The repository therefore serves three linked purposes:
 
 This is the fastest map of what each I3C feature does in this system and how far the repo has gotten with it.
 
-| Feature / Command | Purpose in the System | Status | Used in 5-target example | Current repo baseline |
+| Feature / Command | Purpose in the System | Status | Used in FPGA test system | Current repo baseline |
 | --- | --- | --- | --- | --- |
 | SDR private read/write | Normal controller-to-target telemetry and configuration traffic once addressing is stable. | Implemented | Yes | Controller and target transport path is regression-backed. |
 | Broadcast CCC `RSTDAA` | Clear dynamic addresses so the controller can recover or restart discovery from a known state. | Implemented | Not required in current fixed demo flow | Target address-state reset is wired and tested. |
 | Broadcast CCC `SETAASA` | Let a target use its static address as the active dynamic address during static-assisted boot. | Implemented | No | Static-assisted address activation is wired and tested. |
-| Direct CCC framing | Required controller transaction shape for target-specific CCC commands that use repeated start. | Implemented | No | Controller-side direct write/read framing is in place. |
-| Direct CCC `SETDASA` | Assign a chosen dynamic address to a specific target that can still be reached by static address. | Implemented | No | Target-side decode updates the active dynamic address and suppresses normal transport during the command. |
+| Direct CCC framing | Required controller transaction shape for target-specific CCC commands that use repeated start. | Implemented | Yes | Controller-side direct write/read framing is in place. |
+| Direct CCC `SETDASA` | Assign a chosen dynamic address to a specific target that can still be reached by static address. | Implemented | Yes | Target-side decode updates the active dynamic address and suppresses normal transport during the command. |
 | Direct CCC `GETPID` | Read a target provisional ID so the controller can identify it before or alongside address policy. | Implemented | No | Target returns PID through the direct CCC read path. |
 | Direct CCC `GETBCR` / `GETDCR` | Read capability/class metadata over direct CCC instead of relying only on discovery-time capture. | Implemented | No | Target returns BCR and DCR through dedicated direct CCC read regressions. |
 | Direct CCC `GETSTATUS` | Read current target status so controller policy can observe address/policy/reset-related state. | Implemented | No | Target returns a compact 16-bit status word and regression covers direct readback. |
 | Direct CCC `RSTACT` | Program target reset action policy so later recovery flows have an explicit target-side action selection. | Implemented | No | Direct write path updates target reset-action state and is mirrored into controller policy tracking. |
-| `ENTDAA` single-target baseline | Discover one unassigned target, capture identity fields, and assign a dynamic address. | Implemented | Example bench uses pre-provisioned addresses today | PID/BCR/DCR capture plus controller-side assignment is regression-backed. |
-| `ENTDAA` multi-target sequencing | Enumerate multiple unassigned targets in deterministic PID order and assign addresses across repeated discovery passes. | Implemented | Available, but not exercised by the 5-target sampling bench | Two-target and six-target regressions cover arbitration ordering, BCR/DCR inventory retention, repeated assignment, full-table population, and exhaustion/NACK behavior. |
+| `ENTDAA` single-target baseline | Discover one unassigned target, capture identity fields, and assign a dynamic address. | Implemented | No | PID/BCR/DCR capture plus controller-side assignment is regression-backed. |
+| `ENTDAA` multi-target sequencing | Enumerate multiple unassigned targets in deterministic PID order and assign addresses across repeated discovery passes. | Implemented | Available, but not exercised by the FPGA test stack | Two-target and six-target regressions cover arbitration ordering, BCR/DCR inventory retention, repeated assignment, full-table population, and exhaustion/NACK behavior. |
 | Event-control CCCs `ENEC` / `DISEC` | Enable or disable target-side event classes so future IBI/event policy has explicit controller ownership. | Implemented | No | Broadcast and direct event-mask updates are wired into target state and regression-backed. |
 | Broader CCC subset | Add additional management commands for policy, status, and recovery. | In Progress | Partially available but not used in the example service loop | Repo now covers `RSTDAA`, `SETAASA`, `SETDASA`, `GETPID`, `GETBCR`, `GETDCR`, `GETSTATUS`, `RSTACT`, `ENEC`, `DISEC`, and `ENTDAA`, including recovery/status regressions across reset-related address-state transitions. |
 | Controller endpoint policy state | Turn discovered endpoints into a managed inventory with per-target policy, class, cadence, service history, and health state. | In Progress | Yes | DAA now auto-populates policy records with PID/BCR/DCR, derived class, enable state, event-mask, reset-action, status, service period, due state, service length, selector, last service tag, success/error counters, and recovery sequencing state. |
@@ -104,7 +126,13 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `rtl/i3c_target_ccc.v`: Target-side CCC decode block for event-control, status/reset, metadata, addressing CCCs, and `ENTDAA` participation with arbitration handling.
 - `rtl/i3c_target_daa.v`: Target-side dynamic-address state block.
 - `rtl/i3c_target_top.v`: Target integration wrapper joining transport, DAA state, CCC decode, and a latched register-selector shell for scheduled write templates.
-- `rtl/spartan7_i3c_top.v`: Example top-level wrapper for Spartan-7 (includes Xilinx `IOBUF` usage).
+- `rtl/spartan7_i3c_top.v`: Original minimal top-level wrapper for Spartan-7 SDR bring-up.
+- `rtl/fpga_test/i3c_demo_rate_tick.v`: Generic tick divider used by FPGA-test controller and target demo wrappers.
+- `rtl/fpga_test/i3c_sensor_frame_gen.v`: Deterministic target-side sample/signature generator for FPGA validation.
+- `rtl/fpga_test/i3c_sensor_target_demo.v`: Target demo wrapper that combines the frame generator with the existing target transport/CCC shell.
+- `rtl/fpga_test/i3c_sensor_controller_demo.v`: Controller demo wrapper that performs static-assisted `SETDASA` boot, configures all 5 endpoints, and captures payloads into controller-side buffers.
+- `rtl/fpga_test/spartan7_i3c_controller_demo_top.v`: Spartan-7 controller wrapper for the FPGA-validation stack.
+- `rtl/fpga_test/spartan7_i3c_target_demo_top.v`: Spartan-7 target wrapper for the FPGA-validation stack.
 - `tb/i3c_target_model.v`: Simple behavioral target model for simulation.
 - `tb/tb_i3c_sdr_controller.v`: Happy-path testbench that runs one write + one read transaction.
 - `tb/tb_i3c_sdr_nack.v`: Negative-path testbench that verifies address-miss NACK handling.
@@ -123,6 +151,7 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `tb/tb_i3c_scheduler.v`: Scheduler regression proving cadence-aware round-robin service selection from policy state, including service-period gating, repeated-failure fault latching, recovery clear, skip-on-disable, and skip-on-fault behavior.
 - `tb/tb_i3c_ctrl_top_service.v`: End-to-end controller/target regression proving scheduled policy entries turn into real class-specific write-then-read service templates, multi-byte read capture, selector writes, success/NACK service statistics, and recovery clear after repeated service failures.
 - `tb/tb_i3c_five_target_sampling_system.v`: Five-endpoint reference-system regression covering equal-rate polling, 10-byte per-endpoint sensor payloads, selector-write configuration, and round-robin service across identical targets.
+- `tb/tb_i3c_fpga_test_system.v`: FPGA-validation regression covering on-bus `SETDASA` bring-up, deterministic target signatures, and controller-side capture of all 5 endpoint streams.
 - `tb/tb_i3c_event_policy_ccc.v`: Integration regression for `ENEC`/`DISEC` target policy updates and mirrored controller-side event-mask state.
 - `tb/tb_i3c_reset_status_policy.v`: Integration regression for direct `RSTACT`/`GETSTATUS`, broadcast `RSTDAA`/`SETAASA`, and mirrored controller-side reset/status policy tracking across recovery transitions.
 - `tb/tb_i3c_recovery_sequence.v`: Focused controller-policy regression for timed retry, reset-style cooldown, forced-disable escalation, and explicit recovery clear behavior.
@@ -156,6 +185,7 @@ What now exists beyond the original Phase 0 baseline:
 - controller-side recovery sequencing with timed retry windows, reset-style cooldown, forced-disable escalation, and explicit clear driven from stored reset-action policy
 - multi-target `ENTDAA` controller/target baseline with PID/BCR/DCR capture, controller inventory retention, arbitration, repeated assignment, six-target exact-fit stress coverage, and exhaustion/NACK behavior
 - five-endpoint reference-system bench for identical sensor targets with 10-byte payload service templates and equal-rate polling
+- separated FPGA-validation stack under `rtl/fpga_test/` with static-assisted controller boot, deterministic target sample generation, and controller-side sample buffers
 - dedicated regressions for target transport and DAA state behavior
 
 It gives you a clean path to:
@@ -189,6 +219,7 @@ Expected result:
 - `sim-scheduler` prints `PASS` for cadence-aware round-robin service selection and service-period gating
 - `sim-ctrl-top-service` prints `PASS` for end-to-end scheduled write-then-read service templates plus success/NACK service-statistics capture through the controller top integration path
 - `sim-five-target-sampling-system` prints `PASS` for the five-endpoint reference system with equal-rate polling and 10-byte payload capture
+- `sim-fpga-test-system` prints `PASS` for the separated FPGA-validation stack with real on-bus `SETDASA` boot and controller-side sample capture
 - `sim-event-policy-ccc` prints `PASS` for target-side `ENEC`/`DISEC` plus mirrored controller policy tracking
 - `sim-reset-status-policy` prints `PASS` for direct `RSTACT`/`GETSTATUS`, broadcast `RSTDAA`/`SETAASA`, and mirrored controller reset/status policy tracking
 - `sim-recovery-sequence` prints `PASS` for reset-action-keyed controller recovery sequencing
@@ -211,7 +242,7 @@ In short:
 
 - Phase 0 in this repo is a minimal SDR transport bring-up path for Spartan-7.
 - Phase 0.5 is now implemented: controller refactor plus synthesizable target transport.
-- Phase 1 now includes DAA state scaffolding, controller-side PID/BCR/DCR inventory retention, automatic DAA-to-policy population, a controller policy table with class/enable/health plus per-endpoint cadence, service statistics, service length, and selector configuration, reset-action-keyed recovery sequencing, a cadence-aware scheduler path issuing configured selector-write plus scheduled-read service templates with per-endpoint multi-byte reads, broadcast CCC support (`RSTDAA`, `SETAASA`, `ENEC`, `DISEC`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`/`GETBCR`/`GETDCR`/`GETSTATUS`/`RSTACT`, and regression-backed multi-target `ENTDAA` baselines through six endpoints plus a five-endpoint sensor-system service bench.
+- Phase 1 now includes DAA state scaffolding, controller-side PID/BCR/DCR inventory retention, automatic DAA-to-policy population, a controller policy table with class/enable/health plus per-endpoint cadence, service statistics, service length, and selector configuration, reset-action-keyed recovery sequencing, a cadence-aware scheduler path issuing configured selector-write plus scheduled-read service templates with per-endpoint multi-byte reads, broadcast CCC support (`RSTDAA`, `SETAASA`, `ENEC`, `DISEC`), controller-side direct CCC framing, target-side `SETDASA`/`GETPID`/`GETBCR`/`GETDCR`/`GETSTATUS`/`RSTACT`, and regression-backed multi-target `ENTDAA` baselines through six endpoints plus both a five-endpoint sensor-system service bench and a separated FPGA-validation stack.
 - The remaining Phase 1 work is controller-driven address-state recovery/rekeying beyond the current policy-local sequencing baseline, plus selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
