@@ -33,6 +33,8 @@ module tb_i3c_scheduler;
     wire       scan_enabled;
     wire       scan_health_fault;
     wire       scan_due;
+    wire [7:0] scan_service_rx_len;
+    wire [7:0] scan_service_selector;
     wire       req_valid;
     wire [6:0] req_addr;
     wire [1:0] req_class;
@@ -46,6 +48,8 @@ module tb_i3c_scheduler;
     wire       query_enabled;
     wire       query_health_fault;
     wire [7:0] query_service_period;
+    wire [7:0] query_service_rx_len;
+    wire [7:0] query_service_selector;
     wire [15:0] query_service_count;
     wire [15:0] query_success_count;
     wire [15:0] query_error_count;
@@ -89,6 +93,12 @@ module tb_i3c_scheduler;
         .service_result_valid     (req_accept),
         .service_result_addr      (req_addr),
         .service_result_nack      (req_accept_nack),
+        .service_len_update_valid (1'b0),
+        .service_len_update_addr  (7'h00),
+        .service_len_update_value (8'h00),
+        .service_selector_update_valid(1'b0),
+        .service_selector_update_addr(7'h00),
+        .service_selector_update_value(8'h00),
         .query_addr               (query_addr),
         .query_found              (query_found),
         .query_pid                (),
@@ -102,6 +112,8 @@ module tb_i3c_scheduler;
         .query_reset_action       (),
         .query_status             (),
         .query_service_period     (query_service_period),
+        .query_service_rx_len     (query_service_rx_len),
+        .query_service_selector   (query_service_selector),
         .query_service_count      (query_service_count),
         .query_success_count      (query_success_count),
         .query_error_count        (query_error_count),
@@ -115,6 +127,8 @@ module tb_i3c_scheduler;
         .scan_enabled             (scan_enabled),
         .scan_health_fault        (scan_health_fault),
         .scan_due                 (scan_due),
+        .scan_service_rx_len      (scan_service_rx_len),
+        .scan_service_selector    (scan_service_selector),
         .assign_valid             (),
         .assign_dynamic_addr      (),
         .daa_endpoint_count       (),
@@ -146,6 +160,8 @@ module tb_i3c_scheduler;
         .scan_enabled     (scan_enabled),
         .scan_health_fault(scan_health_fault),
         .scan_due         (scan_due),
+        .scan_service_rx_len(scan_service_rx_len),
+        .scan_service_selector(scan_service_selector),
         .req_valid        (req_valid),
         .req_addr         (req_addr),
         .req_class        (req_class),

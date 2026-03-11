@@ -17,11 +17,15 @@ module i3c_ctrl_scheduler #(
     input  wire                           scan_enabled,
     input  wire                           scan_health_fault,
     input  wire                           scan_due,
+    input  wire [7:0]                     scan_service_rx_len,
+    input  wire [7:0]                     scan_service_selector,
 
     output reg                            req_valid,
     output reg  [6:0]                     req_addr,
     output reg  [1:0]                     req_class,
     output reg  [$clog2(MAX_ENDPOINTS)-1:0] req_index,
+    output reg  [7:0]                     req_service_rx_len,
+    output reg  [7:0]                     req_service_selector,
     output reg                            busy,
     output reg                            missed_slot
 );
@@ -59,6 +63,8 @@ module i3c_ctrl_scheduler #(
             req_addr    <= 7'h00;
             req_class   <= 2'd0;
             req_index   <= {INDEX_W{1'b0}};
+            req_service_rx_len <= 8'd1;
+            req_service_selector <= 8'h00;
             busy        <= 1'b0;
             missed_slot <= 1'b0;
         end else begin
@@ -87,6 +93,8 @@ module i3c_ctrl_scheduler #(
                         req_addr  <= scan_addr;
                         req_class <= scan_class;
                         req_index <= scan_index;
+                        req_service_rx_len <= scan_service_rx_len;
+                        req_service_selector <= scan_service_selector;
                         state     <= ST_WAIT;
                     end else if (scan_count + 1'b1 < endpoint_count[INDEX_W-1:0]) begin
                         scan_index <= next_index(scan_index);

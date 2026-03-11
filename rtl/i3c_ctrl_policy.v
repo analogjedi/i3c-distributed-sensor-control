@@ -46,6 +46,14 @@ module i3c_ctrl_policy #(
     input  wire [6:0]                     service_period_update_addr,
     input  wire [7:0]                     service_period_update_value,
 
+    input  wire                           service_len_update_valid,
+    input  wire [6:0]                     service_len_update_addr,
+    input  wire [7:0]                     service_len_update_value,
+
+    input  wire                           service_selector_update_valid,
+    input  wire [6:0]                     service_selector_update_addr,
+    input  wire [7:0]                     service_selector_update_value,
+
     input  wire                           service_result_valid,
     input  wire [6:0]                     service_result_addr,
     input  wire                           service_result_nack,
@@ -63,6 +71,8 @@ module i3c_ctrl_policy #(
     output reg  [7:0]                     query_reset_action,
     output reg  [15:0]                    query_status,
     output reg  [7:0]                     query_service_period,
+    output reg  [7:0]                     query_service_rx_len,
+    output reg  [7:0]                     query_service_selector,
     output reg  [15:0]                    query_service_count,
     output reg  [15:0]                    query_success_count,
     output reg  [15:0]                    query_error_count,
@@ -80,6 +90,8 @@ module i3c_ctrl_policy #(
     output reg                            scan_enabled,
     output reg                            scan_health_fault,
     output reg                            scan_due,
+    output reg  [7:0]                     scan_service_rx_len,
+    output reg  [7:0]                     scan_service_selector,
 
     output reg  [$clog2(MAX_ENDPOINTS):0] endpoint_count,
     output reg                            table_full,
@@ -113,6 +125,8 @@ module i3c_ctrl_policy #(
     reg [7:0]  reset_action_table[0:MAX_ENDPOINTS-1];
     reg [15:0] status_table    [0:MAX_ENDPOINTS-1];
     reg [7:0]  service_period_table[0:MAX_ENDPOINTS-1];
+    reg [7:0]  service_rx_len_table[0:MAX_ENDPOINTS-1];
+    reg [7:0]  service_selector_table[0:MAX_ENDPOINTS-1];
     reg [15:0] service_count_table[0:MAX_ENDPOINTS-1];
     reg [15:0] success_count_table[0:MAX_ENDPOINTS-1];
     reg [15:0] error_count_table[0:MAX_ENDPOINTS-1];
@@ -140,6 +154,30 @@ module i3c_ctrl_policy #(
         end
     endfunction
 
+    function [7:0] default_service_rx_len;
+        input [1:0] endpoint_class;
+        begin
+            case (endpoint_class)
+                2'd1: default_service_rx_len = 8'd2;
+                2'd2: default_service_rx_len = 8'd3;
+                2'd3: default_service_rx_len = 8'd4;
+                default: default_service_rx_len = 8'd1;
+            endcase
+        end
+    endfunction
+
+    function [7:0] default_service_selector;
+        input [1:0] endpoint_class;
+        begin
+            case (endpoint_class)
+                2'd1: default_service_selector = 8'h10;
+                2'd2: default_service_selector = 8'h20;
+                2'd3: default_service_selector = 8'h30;
+                default: default_service_selector = 8'h00;
+            endcase
+        end
+    endfunction
+
     always @(*) begin
         query_found      = 1'b0;
         query_pid        = 48'h0;
@@ -153,6 +191,8 @@ module i3c_ctrl_policy #(
         query_reset_action = 8'h00;
         query_status     = 16'h0000;
         query_service_period = 8'd1;
+        query_service_rx_len = 8'd1;
+        query_service_selector = 8'h00;
         query_service_count = 16'h0000;
         query_success_count = 16'h0000;
         query_error_count = 16'h0000;
@@ -168,6 +208,8 @@ module i3c_ctrl_policy #(
         scan_enabled     = 1'b0;
         scan_health_fault = 1'b0;
         scan_due         = 1'b0;
+        scan_service_rx_len = 8'd1;
+        scan_service_selector = 8'h00;
 
         for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
             if ((i < endpoint_count) && (addr_table[i] == query_addr)) begin
@@ -183,6 +225,8 @@ module i3c_ctrl_policy #(
                 query_reset_action = reset_action_table[i];
                 query_status     = status_table[i];
                 query_service_period = service_period_table[i];
+                query_service_rx_len = service_rx_len_table[i];
+                query_service_selector = service_selector_table[i];
                 query_service_count = service_count_table[i];
                 query_success_count = success_count_table[i];
                 query_error_count = error_count_table[i];
@@ -204,6 +248,8 @@ module i3c_ctrl_policy #(
             scan_health_fault = health_fault_table[scan_index];
             scan_due          = (service_count_table[scan_index] == 16'h0000) ||
                                 ((schedule_tag - last_service_tag_table[scan_index]) >= service_period_table[scan_index]);
+            scan_service_rx_len = service_rx_len_table[scan_index];
+            scan_service_selector = service_selector_table[scan_index];
         end
     end
 
@@ -228,6 +274,8 @@ module i3c_ctrl_policy #(
                 reset_action_table[i] <= 8'h00;
                 status_table[i]     <= 16'h0000;
                 service_period_table[i] <= 8'd1;
+                service_rx_len_table[i] <= 8'd1;
+                service_selector_table[i] <= 8'h00;
                 service_count_table[i] <= 16'h0000;
                 success_count_table[i] <= 16'h0000;
                 error_count_table[i] <= 16'h0000;
@@ -279,6 +327,8 @@ module i3c_ctrl_policy #(
                     reset_action_table[i] <= 8'h00;
                     status_table[i]     <= 16'h0000;
                     service_period_table[i] <= 8'd1;
+                    service_rx_len_table[i] <= 8'd1;
+                    service_selector_table[i] <= 8'h00;
                     service_count_table[i] <= 16'h0000;
                     success_count_table[i] <= 16'h0000;
                     error_count_table[i] <= 16'h0000;
@@ -320,6 +370,8 @@ module i3c_ctrl_policy #(
                         reset_action_table[endpoint_count] <= 8'h00;
                         status_table[endpoint_count]     <= 16'h0000;
                         service_period_table[endpoint_count] <= (default_service_period == 8'h00) ? 8'd1 : default_service_period;
+                        service_rx_len_table[endpoint_count] <= default_service_rx_len(derive_class(endpoint_bcr, endpoint_dcr));
+                        service_selector_table[endpoint_count] <= default_service_selector(derive_class(endpoint_bcr, endpoint_dcr));
                         service_count_table[endpoint_count] <= 16'h0000;
                         success_count_table[endpoint_count] <= 16'h0000;
                         error_count_table[endpoint_count] <= 16'h0000;
@@ -390,6 +442,30 @@ module i3c_ctrl_policy #(
                 for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
                     if ((i < endpoint_count) && (addr_table[i] == service_period_update_addr)) begin
                         service_period_table[i] <= (service_period_update_value == 8'h00) ? 8'd1 : service_period_update_value;
+                        direct_seen_match = 1'b1;
+                    end
+                end
+                if (!direct_seen_match) begin
+                    policy_update_miss <= 1'b1;
+                end
+            end else if (service_len_update_valid) begin
+                direct_seen_match = 1'b0;
+                last_update_addr  <= service_len_update_addr;
+                for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
+                    if ((i < endpoint_count) && (addr_table[i] == service_len_update_addr)) begin
+                        service_rx_len_table[i] <= (service_len_update_value == 8'h00) ? 8'd1 : service_len_update_value;
+                        direct_seen_match = 1'b1;
+                    end
+                end
+                if (!direct_seen_match) begin
+                    policy_update_miss <= 1'b1;
+                end
+            end else if (service_selector_update_valid) begin
+                direct_seen_match = 1'b0;
+                last_update_addr  <= service_selector_update_addr;
+                for (i = 0; i < MAX_ENDPOINTS; i = i + 1) begin
+                    if ((i < endpoint_count) && (addr_table[i] == service_selector_update_addr)) begin
+                        service_selector_table[i] <= service_selector_update_value;
                         direct_seen_match = 1'b1;
                     end
                 end

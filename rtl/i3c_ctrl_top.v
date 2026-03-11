@@ -2,6 +2,7 @@
 
 module i3c_ctrl_top #(
     parameter integer MAX_ENDPOINTS = 8,
+    parameter integer MAX_SERVICE_BYTES = 16,
     parameter [6:0]  DYN_ADDR_BASE  = 7'h10,
     parameter integer CLK_FREQ_HZ   = 100_000_000,
     parameter integer I3C_SDR_HZ    = 1_000_000,
@@ -45,6 +46,14 @@ module i3c_ctrl_top #(
     input  wire [6:0]                     service_period_update_addr,
     input  wire [7:0]                     service_period_update_value,
 
+    input  wire                           service_len_update_valid,
+    input  wire [6:0]                     service_len_update_addr,
+    input  wire [7:0]                     service_len_update_value,
+
+    input  wire                           service_selector_update_valid,
+    input  wire [6:0]                     service_selector_update_addr,
+    input  wire [7:0]                     service_selector_update_value,
+
     input  wire                           schedule_enable,
     input  wire                           schedule_tick,
 
@@ -61,6 +70,8 @@ module i3c_ctrl_top #(
     output wire [7:0]                     query_reset_action,
     output wire [15:0]                    query_status,
     output wire [7:0]                     query_service_period,
+    output wire [7:0]                     query_service_rx_len,
+    output wire [7:0]                     query_service_selector,
     output wire [15:0]                    query_service_count,
     output wire [15:0]                    query_success_count,
     output wire [15:0]                    query_error_count,
@@ -80,7 +91,7 @@ module i3c_ctrl_top #(
     output reg  [1:0]                     service_rsp_class,
     output reg  [$clog2(MAX_ENDPOINTS)-1:0] service_rsp_index,
     output reg  [7:0]                     service_rsp_rx_count,
-    output reg  [31:0]                    service_rsp_rdata,
+    output reg  [8*MAX_SERVICE_BYTES-1:0] service_rsp_rdata,
     output reg                            service_busy,
 
     output wire                           scl_o,
@@ -111,13 +122,15 @@ module i3c_ctrl_top #(
     wire       scan_enabled;
     wire       scan_health_fault;
     wire       scan_due;
+    wire [7:0] scan_service_rx_len;
+    wire [7:0] scan_service_selector;
 
     reg        txn_req_valid;
     wire       txn_req_ready;
     wire       txn_rsp_valid;
     wire       txn_rsp_nack;
     wire [7:0] txn_rsp_rx_count;
-    wire [31:0] txn_rsp_rdata;
+    wire [8*MAX_SERVICE_BYTES-1:0] txn_rsp_rdata;
     wire       txn_busy;
 
     reg [6:0]             pending_addr;
@@ -129,38 +142,9 @@ module i3c_ctrl_top #(
     reg                   txn_req_read_r;
     reg [7:0]             txn_req_tx_len_r;
     reg [7:0]             txn_req_rx_len_r;
-    reg [31:0]            txn_req_wdata_r;
-
-    function [7:0] class_service_rx_len;
-        input [1:0] endpoint_class;
-        begin
-            case (endpoint_class)
-                2'd1: class_service_rx_len = 8'd2;
-                2'd2: class_service_rx_len = 8'd3;
-                2'd3: class_service_rx_len = 8'd4;
-                default: class_service_rx_len = 8'd1;
-            endcase
-        end
-    endfunction
-
-    function class_service_needs_selector;
-        input [1:0] endpoint_class;
-        begin
-            class_service_needs_selector = (endpoint_class != 2'd0);
-        end
-    endfunction
-
-    function [7:0] class_service_selector;
-        input [1:0] endpoint_class;
-        begin
-            case (endpoint_class)
-                2'd1: class_service_selector = 8'h10;
-                2'd2: class_service_selector = 8'h20;
-                2'd3: class_service_selector = 8'h30;
-                default: class_service_selector = 8'h00;
-            endcase
-        end
-    endfunction
+    reg [8*MAX_SERVICE_BYTES-1:0] txn_req_wdata_r;
+    wire [7:0] sched_req_service_rx_len;
+    wire [7:0] sched_req_service_selector;
 
     i3c_ctrl_inventory #(
         .MAX_ENDPOINTS(MAX_ENDPOINTS),
@@ -196,6 +180,12 @@ module i3c_ctrl_top #(
         .service_period_update_valid(service_period_update_valid),
         .service_period_update_addr(service_period_update_addr),
         .service_period_update_value(service_period_update_value),
+        .service_len_update_valid (service_len_update_valid),
+        .service_len_update_addr  (service_len_update_addr),
+        .service_len_update_value (service_len_update_value),
+        .service_selector_update_valid(service_selector_update_valid),
+        .service_selector_update_addr(service_selector_update_addr),
+        .service_selector_update_value(service_selector_update_value),
         .service_result_valid     (service_rsp_valid),
         .service_result_addr      (service_rsp_addr),
         .service_result_nack      (service_rsp_nack),
@@ -212,6 +202,8 @@ module i3c_ctrl_top #(
         .query_reset_action       (query_reset_action),
         .query_status             (query_status),
         .query_service_period     (query_service_period),
+        .query_service_rx_len     (query_service_rx_len),
+        .query_service_selector   (query_service_selector),
         .query_service_count      (query_service_count),
         .query_success_count      (query_success_count),
         .query_error_count        (query_error_count),
@@ -225,6 +217,8 @@ module i3c_ctrl_top #(
         .scan_enabled             (scan_enabled),
         .scan_health_fault        (scan_health_fault),
         .scan_due                 (scan_due),
+        .scan_service_rx_len      (scan_service_rx_len),
+        .scan_service_selector    (scan_service_selector),
         .assign_valid             (),
         .assign_dynamic_addr      (),
         .daa_endpoint_count       (),
@@ -256,10 +250,14 @@ module i3c_ctrl_top #(
         .scan_enabled     (scan_enabled),
         .scan_health_fault(scan_health_fault),
         .scan_due         (scan_due),
+        .scan_service_rx_len(scan_service_rx_len),
+        .scan_service_selector(scan_service_selector),
         .req_valid        (sched_req_valid),
         .req_addr         (sched_req_addr),
         .req_class        (sched_req_class),
         .req_index        (sched_req_index),
+        .req_service_rx_len(sched_req_service_rx_len),
+        .req_service_selector(sched_req_service_selector),
         .busy             (scheduler_busy),
         .missed_slot      (scheduler_missed_slot)
     );
@@ -268,8 +266,8 @@ module i3c_ctrl_top #(
         .CLK_FREQ_HZ(CLK_FREQ_HZ),
         .I3C_SDR_HZ(I3C_SDR_HZ),
         .PUSH_PULL_DATA(PUSH_PULL_DATA),
-        .MAX_TX_BYTES(4),
-        .MAX_RX_BYTES(4)
+        .MAX_TX_BYTES(MAX_SERVICE_BYTES),
+        .MAX_RX_BYTES(MAX_SERVICE_BYTES)
     ) u_txn (
         .clk             (clk),
         .rst_n           (rst_n),
@@ -306,14 +304,14 @@ module i3c_ctrl_top #(
             txn_req_read_r    <= 1'b1;
             txn_req_tx_len_r  <= 8'd0;
             txn_req_rx_len_r  <= 8'd1;
-            txn_req_wdata_r   <= 32'h0000_0000;
+            txn_req_wdata_r   <= {8*MAX_SERVICE_BYTES{1'b0}};
             service_rsp_valid <= 1'b0;
             service_rsp_nack  <= 1'b0;
             service_rsp_addr  <= 7'h00;
             service_rsp_class <= 2'd0;
             service_rsp_index <= {INDEX_W{1'b0}};
             service_rsp_rx_count <= 8'd0;
-            service_rsp_rdata <= 32'h0000_0000;
+            service_rsp_rdata <= {8*MAX_SERVICE_BYTES{1'b0}};
             service_busy      <= 1'b0;
         end else begin
             sched_req_accept  <= 1'b0;
@@ -327,21 +325,21 @@ module i3c_ctrl_top #(
                         pending_addr  <= sched_req_addr;
                         pending_class <= sched_req_class;
                         pending_index <= sched_req_index;
-                        pending_rx_len <= class_service_rx_len(sched_req_class);
-                        pending_selector_write <= class_service_needs_selector(sched_req_class);
-                        pending_selector_data  <= class_service_selector(sched_req_class);
-                        if (class_service_needs_selector(sched_req_class)) begin
+                        pending_rx_len <= (sched_req_service_rx_len == 8'h00) ? 8'd1 : sched_req_service_rx_len;
+                        pending_selector_write <= (sched_req_service_selector != 8'h00);
+                        pending_selector_data  <= sched_req_service_selector;
+                        if (sched_req_service_selector != 8'h00) begin
                             txn_req_read_r   <= 1'b0;
                             txn_req_tx_len_r <= 8'd1;
                             txn_req_rx_len_r <= 8'd0;
-                            txn_req_wdata_r  <= {24'h000000, class_service_selector(sched_req_class)};
+                            txn_req_wdata_r  <= {{8*(MAX_SERVICE_BYTES-1){1'b0}}, sched_req_service_selector};
                             txn_req_valid    <= 1'b1;
                             svc_state        <= SVC_WAIT_WR_REQ;
                         end else begin
                             txn_req_read_r   <= 1'b1;
                             txn_req_tx_len_r <= 8'd0;
-                            txn_req_rx_len_r <= class_service_rx_len(sched_req_class);
-                            txn_req_wdata_r  <= 32'h0000_0000;
+                            txn_req_rx_len_r <= (sched_req_service_rx_len == 8'h00) ? 8'd1 : sched_req_service_rx_len;
+                            txn_req_wdata_r  <= {8*MAX_SERVICE_BYTES{1'b0}};
                             txn_req_valid    <= 1'b1;
                             svc_state        <= SVC_WAIT_RD_REQ;
                         end
@@ -365,13 +363,13 @@ module i3c_ctrl_top #(
                             service_rsp_class    <= pending_class;
                             service_rsp_index    <= pending_index;
                             service_rsp_rx_count <= 8'd0;
-                            service_rsp_rdata    <= 32'h0000_0000;
+                            service_rsp_rdata    <= {8*MAX_SERVICE_BYTES{1'b0}};
                             svc_state            <= SVC_IDLE;
                         end else begin
                             txn_req_read_r   <= 1'b1;
                             txn_req_tx_len_r <= 8'd0;
                             txn_req_rx_len_r <= pending_rx_len;
-                            txn_req_wdata_r  <= 32'h0000_0000;
+                            txn_req_wdata_r  <= {8*MAX_SERVICE_BYTES{1'b0}};
                             txn_req_valid    <= 1'b1;
                             svc_state        <= SVC_WAIT_RD_REQ;
                         end

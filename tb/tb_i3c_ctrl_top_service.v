@@ -32,6 +32,8 @@ module tb_i3c_ctrl_top_service;
     wire       query_enabled;
     wire       query_health_fault;
     wire [7:0] query_service_period;
+    wire [7:0] query_service_rx_len;
+    wire [7:0] query_service_selector;
     wire [15:0] query_service_count;
     wire [15:0] query_success_count;
     wire [15:0] query_error_count;
@@ -47,7 +49,7 @@ module tb_i3c_ctrl_top_service;
     wire [1:0] service_rsp_class;
     wire [2:0] service_rsp_index;
     wire [7:0] service_rsp_rx_count;
-    wire [31:0] service_rsp_rdata;
+    wire [127:0] service_rsp_rdata;
     wire       service_busy;
 
     wire scl_o;
@@ -144,6 +146,12 @@ module tb_i3c_ctrl_top_service;
         .status_update_ok         (status_update_ok),
         .schedule_enable          (1'b1),
         .schedule_tick            (schedule_tick),
+        .service_len_update_valid (1'b0),
+        .service_len_update_addr  (7'h00),
+        .service_len_update_value (8'h00),
+        .service_selector_update_valid(1'b0),
+        .service_selector_update_addr(7'h00),
+        .service_selector_update_value(8'h00),
         .query_addr               (query_addr),
         .query_found              (query_found),
         .query_pid                (),
@@ -157,6 +165,8 @@ module tb_i3c_ctrl_top_service;
         .query_reset_action       (),
         .query_status             (),
         .query_service_period     (query_service_period),
+        .query_service_rx_len     (query_service_rx_len),
+        .query_service_selector   (query_service_selector),
         .query_service_count      (query_service_count),
         .query_success_count      (query_success_count),
         .query_error_count        (query_error_count),
@@ -651,7 +661,7 @@ module tb_i3c_ctrl_top_service;
         input [6:0] expected_addr;
         input [1:0] expected_class;
         input [7:0] expected_count;
-        input [31:0] expected_data;
+        input [127:0] expected_data;
         integer wait_cycles;
         begin
             pulse_schedule_tick;
@@ -665,7 +675,7 @@ module tb_i3c_ctrl_top_service;
                 (service_rsp_class != expected_class) ||
                 (service_rsp_rx_count != expected_count) ||
                 (service_rsp_rdata != expected_data)) begin
-                $display("FAIL: service mismatch valid=%0d nack=%0d addr=0x%02h class=%0d count=%0d data=0x%08h expected_addr=0x%02h expected_class=%0d expected_count=%0d expected_data=0x%08h",
+                $display("FAIL: service mismatch valid=%0d nack=%0d addr=0x%02h class=%0d count=%0d data=0x%032h expected_addr=0x%02h expected_class=%0d expected_count=%0d expected_data=0x%032h",
                          service_rsp_valid, service_rsp_nack, service_rsp_addr, service_rsp_class,
                          service_rsp_rx_count, service_rsp_rdata, expected_addr, expected_class,
                          expected_count, expected_data);
