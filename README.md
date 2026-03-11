@@ -66,7 +66,7 @@ The repository therefore serves three linked purposes:
 This is the fastest map of what each I3C feature does in this system and how far the repo has gotten with it.
 
 | Feature / Command | Purpose in the System | Status | Used in 5-target example | Current repo baseline |
-| --- | --- | --- | --- |
+| --- | --- | --- | --- | --- |
 | SDR private read/write | Normal controller-to-target telemetry and configuration traffic once addressing is stable. | Implemented | Yes | Controller and target transport path is regression-backed. |
 | Broadcast CCC `RSTDAA` | Clear dynamic addresses so the controller can recover or restart discovery from a known state. | Implemented | Not required in current fixed demo flow | Target address-state reset is wired and tested. |
 | Broadcast CCC `SETAASA` | Let a target use its static address as the active dynamic address during static-assisted boot. | Implemented | No | Static-assisted address activation is wired and tested. |
