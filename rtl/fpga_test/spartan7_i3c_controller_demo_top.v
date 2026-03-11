@@ -14,7 +14,9 @@ module spartan7_i3c_controller_demo_top #(
     output wire       led_boot_done,      // RGB green
     output wire       led_error,          // RGB red
     inout  wire       i3c_scl,
-    inout  wire       i3c_sda
+    inout  wire       i3c_sda,
+    output wire       uart_txd,           // FPGA → PC (FT2232H)
+    input  wire       uart_rxd            // PC → FPGA (FT2232H)
 );
 
     // ----------------------------------------------------------------
@@ -88,12 +90,59 @@ module spartan7_i3c_controller_demo_top #(
     );
 
     // ----------------------------------------------------------------
+    // UART command interface
+    // ----------------------------------------------------------------
+    wire [7:0] uart_rx_data;
+    wire       uart_rx_valid;
+    wire [7:0] uart_tx_data;
+    wire       uart_tx_valid;
+    wire       uart_tx_ready;
+    wire       soft_start;
+
+    uart_rx #(
+        .CLK_FREQ_HZ (CLK_FREQ_HZ),
+        .BAUD_RATE    (115200)
+    ) u_uart_rx (
+        .clk     (clk_100m),
+        .rst_n   (sys_rst_n),
+        .rx_pin  (uart_rxd),
+        .rx_data (uart_rx_data),
+        .rx_valid(uart_rx_valid)
+    );
+
+    uart_tx #(
+        .CLK_FREQ_HZ (CLK_FREQ_HZ),
+        .BAUD_RATE    (115200)
+    ) u_uart_tx (
+        .clk     (clk_100m),
+        .rst_n   (sys_rst_n),
+        .tx_data (uart_tx_data),
+        .tx_valid(uart_tx_valid),
+        .tx_ready(uart_tx_ready),
+        .tx_pin  (uart_txd)
+    );
+
+    // ----------------------------------------------------------------
+    // Soft-start gating: hold demo in reset until 'S' command received
+    // ----------------------------------------------------------------
+    reg demo_started;
+    always @(posedge clk_100m or negedge sys_rst_n) begin
+        if (!sys_rst_n)
+            demo_started <= 1'b0;
+        else if (soft_start)
+            demo_started <= 1'b1;
+    end
+
+    wire demo_rst_n = sys_rst_n & demo_started;
+
+    // ----------------------------------------------------------------
     // Controller demo core
     // ----------------------------------------------------------------
     wire boot_done;
     wire boot_error;
     wire capture_error;
     wire [4:0] sample_valid_bitmap;
+    wire [5*10*8-1:0] sample_payloads_flat;
 
     assign led_sample_valid = sample_valid_bitmap[3:0];
     assign led_sv4          = sample_valid_bitmap[4];
@@ -105,7 +154,7 @@ module spartan7_i3c_controller_demo_top #(
         .I3C_SDR_HZ  (I3C_SDR_HZ)
     ) u_demo (
         .clk                       (clk_100m),
-        .rst_n                     (sys_rst_n),
+        .rst_n                     (demo_rst_n),
         .scl_o                     (scl_o),
         .scl_oe                    (scl_oe),
         .sda_o                     (sda_o),
@@ -115,10 +164,29 @@ module spartan7_i3c_controller_demo_top #(
         .boot_error                (boot_error),
         .capture_error             (capture_error),
         .sample_valid_bitmap       (sample_valid_bitmap),
-        .sample_payloads_flat      (),
+        .sample_payloads_flat      (sample_payloads_flat),
         .sample_capture_count_flat (),
         .last_service_addr         (),
         .last_service_count        ()
+    );
+
+    // ----------------------------------------------------------------
+    // Command handler
+    // ----------------------------------------------------------------
+    uart_cmd_handler u_cmd_handler (
+        .clk                  (clk_100m),
+        .rst_n                (sys_rst_n),
+        .rx_data              (uart_rx_data),
+        .rx_valid             (uart_rx_valid),
+        .tx_data              (uart_tx_data),
+        .tx_valid             (uart_tx_valid),
+        .tx_ready             (uart_tx_ready),
+        .soft_start           (soft_start),
+        .boot_done            (boot_done),
+        .boot_error           (boot_error),
+        .capture_error        (capture_error),
+        .sample_payloads_flat (sample_payloads_flat),
+        .sample_valid_bitmap  (sample_valid_bitmap)
     );
 
 endmodule

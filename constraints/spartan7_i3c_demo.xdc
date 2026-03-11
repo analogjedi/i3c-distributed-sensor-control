@@ -28,6 +28,10 @@ set_property SLEW FAST  [get_ports {i3c_scl i3c_sda}]
 set_property DRIVE 8    [get_ports {i3c_scl i3c_sda}]
 set_property PULLUP true [get_ports {i3c_scl i3c_sda}]
 
+## UART (FT2232H USB-UART bridge)
+set_property -dict { PACKAGE_PIN L12 IOSTANDARD LVCMOS33 } [get_ports uart_txd]
+set_property -dict { PACKAGE_PIN K15 IOSTANDARD LVCMOS33 } [get_ports uart_rxd]
+
 ## Configuration
 set_property CFGBVS VCCO [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]
