@@ -20,8 +20,26 @@ module spartan7_i3c_target_demo_top #(
     wire [6:0]  active_addr;
     wire        dynamic_addr_valid;
     wire        read_valid;
+    wire        sda_oe;
+    wire        sda_i;
 
     assign led_frame_active = frame_counter[8] ^ dynamic_addr_valid ^ read_valid ^ register_selector[0] ^ active_addr[0] ^ sample_payload[0];
+
+    // SCL is input-only for targets
+    IOBUF iobuf_scl (
+        .I  (1'b1),
+        .O  (),
+        .IO (i3c_scl),
+        .T  (1'b1)
+    );
+
+    // SDA open-drain I/O
+    IOBUF iobuf_sda (
+        .I  (1'b0),
+        .O  (sda_i),
+        .IO (i3c_sda),
+        .T  (~sda_oe)
+    );
 
     i3c_sensor_target_demo #(
         .TARGET_INDEX (TARGET_INDEX),
@@ -33,7 +51,8 @@ module spartan7_i3c_target_demo_top #(
         .clk            (clk_100mhz),
         .rst_n          (btn_rst_n),
         .scl            (i3c_scl),
-        .sda            (i3c_sda),
+        .sda            (sda_i),
+        .sda_oe         (sda_oe),
         .sample_payload (sample_payload),
         .frame_counter  (frame_counter),
         .register_selector(register_selector),

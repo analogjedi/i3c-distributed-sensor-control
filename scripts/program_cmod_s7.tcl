@@ -1,7 +1,7 @@
 # CMOD S7 JTAG Programming Script
 # Usage: vivado -mode batch -source scripts/program_cmod_s7.tcl
 
-set bitstream "build/i3c_demo/i3c_demo.runs/impl_1/spartan7_i3c_controller_demo_top.bit"
+set bitstream "build/i3c_demo/i3c_demo.runs/impl_1/spartan7_i3c_unified_demo_top.bit"
 
 if {![file exists $bitstream]} {
     puts "ERROR: Bitstream not found: $bitstream"

@@ -19,9 +19,11 @@ module i3c_target_ccc #(
     parameter [7:0]  TARGET_BCR   = 8'h01,
     parameter [7:0]  TARGET_DCR   = 8'h5A
 ) (
+    input  wire       clk,
     input  wire       rst_n,
     input  wire       scl,
-    inout  wire       sda,
+    input  wire       sda,
+    output wire       sda_drive_en,
     input  wire [6:0] active_addr,
     input  wire       dynamic_addr_valid,
     input  wire [47:0] provisional_id,
@@ -154,9 +156,27 @@ module i3c_target_ccc #(
         end
     endfunction
 
-    assign sda = sda_drive_low ? 1'b0 : 1'bz;
+    assign sda_drive_en = sda_drive_low;
 
-    always @(negedge sda or negedge rst_n) begin
+    // Edge detection on SCL and SDA
+    reg scl_d, sda_d;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            scl_d <= 1'b1;
+            sda_d <= 1'b1;
+        end else begin
+            scl_d <= scl;
+            sda_d <= sda;
+        end
+    end
+    wire scl_rising  = ~scl_d &  scl;
+    wire scl_falling =  scl_d & ~scl;
+    wire sda_falling =  sda_d & ~sda;
+    wire sda_rising  = ~sda_d &  sda;
+
+    // Single synchronous state machine
+    // Priority: reset > START (sda_falling) > STOP (sda_rising) > SCL edges
+    always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state                   <= ST_IDLE;
             ack_context             <= ACK_NONE;
@@ -194,458 +214,369 @@ module i3c_target_ccc #(
             entdaa_assign_addr      <= 7'h00;
             ccc_seen                <= 1'b0;
             last_ccc                <= 8'h00;
-        end else if (scl === 1'b1) begin
-            if (entdaa_lost) begin
-                pending_entdaa    <= 1'b0;
-                transport_holdoff <= 1'b0;
-            end
-            state                   <= ST_ADDR;
-            ack_context             <= ACK_NONE;
-            bit_pos                 <= 4'd0;
-            shift_reg               <= 8'h00;
-            ack_pending             <= 1'b0;
-            ack_drive_low           <= 1'b0;
-            sda_drive_low           <= 1'b0;
-            current_rw              <= 1'b0;
-            current_addr_is_ccc     <= 1'b0;
-            collecting_ccc_code     <= 1'b0;
-            collecting_direct_data  <= 1'b0;
-            collecting_broadcast_data <= 1'b0;
-            collecting_entdaa_assign<= 1'b0;
-            direct_target_match     <= 1'b0;
-            entdaa_lost            <= 1'b0;
-            rstdaa_pulse            <= 1'b0;
-            setaasa_pulse           <= 1'b0;
-            setdasa_valid           <= 1'b0;
-            entdaa_assign_valid     <= 1'b0;
-            ccc_seen                <= 1'b0;
-            status_word             <= {event_enable_mask,
-                                        rstact_action[2:0], 3'b000,
-                                        (|event_enable_mask),
-                                        dynamic_addr_valid};
-        end
-    end
-
-    // This model preserves pending direct/ENTDAA state across the SDA-high
-    // transition that precedes repeated-start on the simplified simulation bus.
-    always @(posedge sda or negedge rst_n) begin
-        if (!rst_n) begin
-            state                   <= ST_IDLE;
-            ack_context             <= ACK_NONE;
-            bit_pos                 <= 4'd0;
-            shift_reg               <= 8'h00;
-            ack_pending             <= 1'b0;
-            ack_drive_low           <= 1'b0;
-            sda_drive_low           <= 1'b0;
-            current_rw              <= 1'b0;
-            current_addr_is_ccc     <= 1'b0;
-            collecting_ccc_code     <= 1'b0;
-            collecting_direct_data  <= 1'b0;
-            collecting_broadcast_data <= 1'b0;
-            collecting_entdaa_assign<= 1'b0;
-            direct_target_match     <= 1'b0;
-            read_kind               <= READ_NONE;
-            read_bit_pos            <= 4'd0;
-            read_byte_idx           <= 4'd0;
-            read_len                <= 4'd0;
-            rstdaa_pulse            <= 1'b0;
-            setaasa_pulse           <= 1'b0;
-            setdasa_valid           <= 1'b0;
-            entdaa_assign_valid     <= 1'b0;
-            ccc_seen                <= 1'b0;
-            transport_holdoff       <= 1'b0;
-            pending_direct_ccc      <= 1'b0;
-            pending_broadcast_data  <= 1'b0;
-            pending_entdaa          <= 1'b0;
-            entdaa_lost            <= 1'b0;
-        end else if (scl === 1'b1) begin
-            state                   <= (pending_direct_ccc || pending_entdaa) ? ST_ADDR : ST_IDLE;
-            ack_context             <= ACK_NONE;
-            bit_pos                 <= 4'd0;
-            shift_reg               <= 8'h00;
-            ack_pending             <= 1'b0;
-            ack_drive_low           <= 1'b0;
-            sda_drive_low           <= 1'b0;
-            current_rw              <= 1'b0;
-            current_addr_is_ccc     <= 1'b0;
-            collecting_ccc_code     <= 1'b0;
-            collecting_direct_data  <= 1'b0;
-            collecting_entdaa_assign<= 1'b0;
-            direct_target_match     <= 1'b0;
-            entdaa_lost            <= 1'b0;
-            read_kind               <= READ_NONE;
-            read_bit_pos            <= 4'd0;
-            read_byte_idx           <= 4'd0;
-            read_len                <= 4'd0;
-            rstdaa_pulse            <= 1'b0;
-            setaasa_pulse           <= 1'b0;
-            setdasa_valid           <= 1'b0;
-            entdaa_assign_valid     <= 1'b0;
-            ccc_seen                <= 1'b0;
-            if (!(pending_direct_ccc || pending_entdaa)) begin
-                transport_holdoff   <= 1'b0;
-            end
-            status_word             <= {event_enable_mask,
-                                        rstact_action[2:0], 3'b000,
-                                        (|event_enable_mask),
-                                        dynamic_addr_valid};
-        end
-    end
-
-    always @(negedge scl or negedge rst_n) begin
-        if (!rst_n) begin
-            sda_drive_low <= 1'b0;
-        end else if (ack_pending) begin
-            sda_drive_low <= ack_drive_low;
-        end else if ((state == ST_READ) && (read_bit_pos < 4'd8)) begin
-            sda_drive_low <= ~read_shift[7 - read_bit_pos[2:0]];
         end else begin
-            sda_drive_low <= 1'b0;
-        end
-    end
-
-    always @(posedge scl or negedge rst_n) begin
-        if (!rst_n) begin
-            state                   <= ST_IDLE;
-            ack_context             <= ACK_NONE;
-            bit_pos                 <= 4'd0;
-            shift_reg               <= 8'h00;
-            current_ccc             <= 8'h00;
-            ack_pending             <= 1'b0;
-            ack_drive_low           <= 1'b0;
-            current_rw              <= 1'b0;
-            current_addr_is_ccc     <= 1'b0;
-            collecting_ccc_code     <= 1'b0;
-            collecting_direct_data  <= 1'b0;
-            collecting_broadcast_data <= 1'b0;
-            collecting_entdaa_assign<= 1'b0;
-            pending_direct_ccc      <= 1'b0;
-            pending_broadcast_data  <= 1'b0;
-            pending_entdaa          <= 1'b0;
-            entdaa_lost            <= 1'b0;
-            direct_target_match     <= 1'b0;
-            read_kind               <= READ_NONE;
-            read_bit_pos            <= 4'd0;
-            read_byte_idx           <= 4'd0;
-            read_len                <= 4'd0;
-            read_shift              <= 8'h00;
-            transport_holdoff       <= 1'b0;
-            event_enable_mask       <= 8'h00;
-            rstact_action           <= 8'h00;
-            status_word             <= 16'h0000;
-            rstdaa_pulse            <= 1'b0;
-            setaasa_pulse           <= 1'b0;
-            setdasa_valid           <= 1'b0;
-            setdasa_addr            <= 7'h00;
-            entdaa_assign_valid     <= 1'b0;
-            entdaa_assign_addr      <= 7'h00;
-            ccc_seen                <= 1'b0;
-            last_ccc                <= 8'h00;
-        end else begin
+            // Clear single-cycle pulses every cycle
             rstdaa_pulse        <= 1'b0;
             setaasa_pulse       <= 1'b0;
             setdasa_valid       <= 1'b0;
             entdaa_assign_valid <= 1'b0;
             ccc_seen            <= 1'b0;
+            // Update status word continuously
             status_word         <= {event_enable_mask,
                                     rstact_action[2:0], 3'b000,
                                     (|event_enable_mask),
                                     dynamic_addr_valid};
 
-            case (state)
-                ST_ADDR: begin
-                    shift_reg <= assembled_byte;
-                    if (bit_pos == 4'd7) begin
-                        current_rw          <= sda;
-                        current_addr_is_ccc <= (!pending_direct_ccc && !pending_entdaa &&
-                                                ((assembled_byte & 8'hFE) == {CCC_ADDR, 1'b0}));
-                        direct_target_match <= pending_direct_ccc && direct_addr_match;
-                        ack_pending         <= 1'b1;
-                        bit_pos             <= 4'd0;
-                        state               <= ST_ACK;
+            if (sda_falling && scl) begin
+                // START condition — highest priority
+                if (entdaa_lost) begin
+                    pending_entdaa    <= 1'b0;
+                    transport_holdoff <= 1'b0;
+                end
+                state                   <= ST_ADDR;
+                ack_context             <= ACK_NONE;
+                bit_pos                 <= 4'd0;
+                shift_reg               <= 8'h00;
+                ack_pending             <= 1'b0;
+                ack_drive_low           <= 1'b0;
+                sda_drive_low           <= 1'b0;
+                current_rw              <= 1'b0;
+                current_addr_is_ccc     <= 1'b0;
+                collecting_ccc_code     <= 1'b0;
+                collecting_direct_data  <= 1'b0;
+                collecting_broadcast_data <= 1'b0;
+                collecting_entdaa_assign<= 1'b0;
+                direct_target_match     <= 1'b0;
+                entdaa_lost            <= 1'b0;
+            end else if (sda_rising && scl) begin
+                // STOP condition
+                state                   <= (pending_direct_ccc || pending_entdaa) ? ST_ADDR : ST_IDLE;
+                ack_context             <= ACK_NONE;
+                bit_pos                 <= 4'd0;
+                shift_reg               <= 8'h00;
+                ack_pending             <= 1'b0;
+                ack_drive_low           <= 1'b0;
+                sda_drive_low           <= 1'b0;
+                current_rw              <= 1'b0;
+                current_addr_is_ccc     <= 1'b0;
+                collecting_ccc_code     <= 1'b0;
+                collecting_direct_data  <= 1'b0;
+                collecting_entdaa_assign<= 1'b0;
+                direct_target_match     <= 1'b0;
+                entdaa_lost            <= 1'b0;
+                read_kind               <= READ_NONE;
+                read_bit_pos            <= 4'd0;
+                read_byte_idx           <= 4'd0;
+                read_len                <= 4'd0;
+                if (!(pending_direct_ccc || pending_entdaa)) begin
+                    transport_holdoff   <= 1'b0;
+                end
+            end else if (scl_falling) begin
+                // Drive SDA for ACK / read data on falling SCL edge
+                if (ack_pending) begin
+                    sda_drive_low <= ack_drive_low;
+                end else if ((state == ST_READ) && (read_bit_pos < 4'd8)) begin
+                    sda_drive_low <= ~read_shift[7 - read_bit_pos[2:0]];
+                end else begin
+                    sda_drive_low <= 1'b0;
+                end
+            end else if (scl_rising) begin
+                // Data sampling and state machine on rising SCL edge
+                case (state)
+                    ST_ADDR: begin
+                        shift_reg <= assembled_byte;
+                        if (bit_pos == 4'd7) begin
+                            current_rw          <= sda;
+                            current_addr_is_ccc <= (!pending_direct_ccc && !pending_entdaa &&
+                                                    ((assembled_byte & 8'hFE) == {CCC_ADDR, 1'b0}));
+                            direct_target_match <= pending_direct_ccc && direct_addr_match;
+                            ack_pending         <= 1'b1;
+                            bit_pos             <= 4'd0;
+                            state               <= ST_ACK;
 
-                        if (pending_entdaa && (assembled_byte == {CCC_ADDR, 1'b1})) begin
-                            ack_context   <= ACK_ENTDAA_ADDR;
-                            ack_drive_low <= !dynamic_addr_valid;
-                        end else if (pending_entdaa &&
-                                     ((assembled_byte & 8'hFE) == {CCC_ADDR, 1'b0})) begin
-                            pending_entdaa    <= 1'b0;
-                            transport_holdoff <= 1'b0;
-                            current_addr_is_ccc <= 1'b1;
-                            ack_context       <= ACK_CCC_ADDR;
-                            ack_drive_low     <= !sda;
-                        end else if (pending_direct_ccc) begin
-                            ack_context   <= ACK_DIRECT_ADDR;
-                            ack_drive_low <= direct_addr_match &&
-                                             (((current_ccc == CCC_SETDASA) && !sda) ||
-                                              ((current_ccc == CCC_ENEC_DIRECT) && !sda) ||
-                                              ((current_ccc == CCC_DISEC_DIRECT) && !sda) ||
-                                              ((current_ccc == CCC_RSTACT_DIRECT) && !sda) ||
-                                              ((current_ccc == CCC_GETPID) && sda) ||
-                                              ((current_ccc == CCC_GETBCR) && sda) ||
-                                              ((current_ccc == CCC_GETDCR) && sda) ||
-                                              ((current_ccc == CCC_GETSTATUS) && sda));
+                            if (pending_entdaa && (assembled_byte == {CCC_ADDR, 1'b1})) begin
+                                ack_context   <= ACK_ENTDAA_ADDR;
+                                ack_drive_low <= !dynamic_addr_valid;
+                            end else if (pending_entdaa &&
+                                         ((assembled_byte & 8'hFE) == {CCC_ADDR, 1'b0})) begin
+                                pending_entdaa    <= 1'b0;
+                                transport_holdoff <= 1'b0;
+                                current_addr_is_ccc <= 1'b1;
+                                ack_context       <= ACK_CCC_ADDR;
+                                ack_drive_low     <= !sda;
+                            end else if (pending_direct_ccc) begin
+                                ack_context   <= ACK_DIRECT_ADDR;
+                                ack_drive_low <= direct_addr_match &&
+                                                 (((current_ccc == CCC_SETDASA) && !sda) ||
+                                                  ((current_ccc == CCC_ENEC_DIRECT) && !sda) ||
+                                                  ((current_ccc == CCC_DISEC_DIRECT) && !sda) ||
+                                                  ((current_ccc == CCC_RSTACT_DIRECT) && !sda) ||
+                                                  ((current_ccc == CCC_GETPID) && sda) ||
+                                                  ((current_ccc == CCC_GETBCR) && sda) ||
+                                                  ((current_ccc == CCC_GETDCR) && sda) ||
+                                                  ((current_ccc == CCC_GETSTATUS) && sda));
+                            end else begin
+                                ack_context   <= ACK_CCC_ADDR;
+                                ack_drive_low <= ((assembled_byte & 8'hFE) == {CCC_ADDR, 1'b0}) && !sda;
+                            end
                         end else begin
-                            ack_context   <= ACK_CCC_ADDR;
-                            ack_drive_low <= ((assembled_byte & 8'hFE) == {CCC_ADDR, 1'b0}) && !sda;
+                            bit_pos <= bit_pos + 1'b1;
                         end
-                    end else begin
-                        bit_pos <= bit_pos + 1'b1;
                     end
-                end
 
-                ST_ACK: begin
-                    ack_pending <= 1'b0;
+                    ST_ACK: begin
+                        ack_pending <= 1'b0;
 
-                    case (ack_context)
-                        ACK_CCC_ADDR: begin
-                            if (current_addr_is_ccc && !current_rw) begin
-                                state               <= ST_DATA;
-                                collecting_ccc_code <= 1'b1;
-                                bit_pos             <= 4'd0;
-                                shift_reg           <= 8'h00;
-                            end else begin
-                                state <= ST_IDLE;
+                        case (ack_context)
+                            ACK_CCC_ADDR: begin
+                                if (current_addr_is_ccc && !current_rw) begin
+                                    state               <= ST_DATA;
+                                    collecting_ccc_code <= 1'b1;
+                                    bit_pos             <= 4'd0;
+                                    shift_reg           <= 8'h00;
+                                end else begin
+                                    state <= ST_IDLE;
+                                end
                             end
-                        end
 
-                        ACK_CCC_CODE: begin
-                            if (pending_direct_ccc || pending_entdaa) begin
-                                state     <= ST_ADDR;
-                                bit_pos   <= 4'd0;
-                                shift_reg <= 8'h00;
-                            end else if (pending_broadcast_data) begin
-                                state                   <= ST_DATA;
-                                collecting_broadcast_data <= 1'b1;
-                                bit_pos                 <= 4'd0;
-                                shift_reg               <= 8'h00;
-                            end else begin
-                                state <= ST_IDLE;
+                            ACK_CCC_CODE: begin
+                                if (pending_direct_ccc || pending_entdaa) begin
+                                    state     <= ST_ADDR;
+                                    bit_pos   <= 4'd0;
+                                    shift_reg <= 8'h00;
+                                end else if (pending_broadcast_data) begin
+                                    state                   <= ST_DATA;
+                                    collecting_broadcast_data <= 1'b1;
+                                    bit_pos                 <= 4'd0;
+                                    shift_reg               <= 8'h00;
+                                end else begin
+                                    state <= ST_IDLE;
+                                end
                             end
-                        end
 
-                        ACK_DIRECT_ADDR: begin
-                            if (((current_ccc == CCC_SETDASA) ||
-                                 (current_ccc == CCC_ENEC_DIRECT) ||
-                                 (current_ccc == CCC_DISEC_DIRECT) ||
-                                 (current_ccc == CCC_RSTACT_DIRECT)) &&
-                                direct_target_match && !current_rw) begin
-                                state                  <= ST_DATA;
-                                collecting_direct_data <= 1'b1;
-                                bit_pos                <= 4'd0;
-                                shift_reg              <= 8'h00;
-                            end else if ((current_ccc == CCC_GETPID) && direct_target_match && current_rw) begin
-                                state        <= ST_READ;
-                                read_kind    <= READ_GETPID;
-                                read_byte_idx<= 4'd0;
-                                read_bit_pos <= 4'd0;
-                                read_len     <= 4'd6;
-                                read_shift   <= pid_byte(provisional_id, 3'd0);
-                            end else if ((current_ccc == CCC_GETBCR) && direct_target_match && current_rw) begin
-                                state        <= ST_READ;
-                                read_kind    <= READ_GETBCR;
-                                read_byte_idx<= 4'd0;
-                                read_bit_pos <= 4'd0;
-                                read_len     <= 4'd1;
-                                read_shift   <= TARGET_BCR;
-                            end else if ((current_ccc == CCC_GETDCR) && direct_target_match && current_rw) begin
-                                state        <= ST_READ;
-                                read_kind    <= READ_GETDCR;
-                                read_byte_idx<= 4'd0;
-                                read_bit_pos <= 4'd0;
-                                read_len     <= 4'd1;
-                                read_shift   <= TARGET_DCR;
-                            end else if ((current_ccc == CCC_GETSTATUS) && direct_target_match && current_rw) begin
-                                state        <= ST_READ;
-                                read_kind    <= READ_GETSTATUS;
-                                read_byte_idx<= 4'd0;
-                                read_bit_pos <= 4'd0;
-                                read_len     <= 4'd2;
-                                read_shift   <= status_word[15:8];
-                            end else begin
-                                pending_direct_ccc <= 1'b0;
-                                transport_holdoff  <= 1'b0;
-                                state <= ST_IDLE;
-                            end
-                        end
-
-                        ACK_DIRECT_DATA: begin
-                            state <= ST_IDLE;
-                        end
-
-                        ACK_BCAST_DATA: begin
-                            state <= ST_IDLE;
-                        end
-
-                        ACK_ENTDAA_ADDR: begin
-                            if (!dynamic_addr_valid && !entdaa_lost) begin
-                                state        <= ST_READ;
-                                read_kind    <= READ_ENTDAA;
-                                read_byte_idx<= 4'd0;
-                                read_bit_pos <= 4'd0;
-                                read_len     <= 4'd8;
-                                read_shift   <= pid_byte(provisional_id, 3'd0);
-                            end else begin
-                                state <= ST_IDLE;
-                            end
-                        end
-
-                        ACK_ENTDAA_ASSIGN: begin
-                            state <= ST_IDLE;
-                        end
-
-                        default: begin
-                            state <= ST_IDLE;
-                        end
-                    endcase
-                end
-
-                ST_DATA: begin
-                    shift_reg <= assembled_byte;
-                    if (bit_pos == 4'd7) begin
-                        ack_pending <= 1'b1;
-                        bit_pos     <= 4'd0;
-                        state       <= ST_ACK;
-
-                        if (collecting_ccc_code) begin
-                            current_ccc           <= assembled_byte;
-                            last_ccc              <= assembled_byte;
-                            ccc_seen              <= 1'b1;
-                            collecting_ccc_code   <= 1'b0;
-                            ack_context           <= ACK_CCC_CODE;
-                            ack_drive_low         <= 1'b1;
-
-                            if (assembled_byte == CCC_RSTDAA) begin
-                                rstdaa_pulse      <= 1'b1;
-                            end
-                            if (assembled_byte == CCC_SETAASA) begin
-                                setaasa_pulse     <= 1'b1;
-                            end
-                            if ((assembled_byte == CCC_SETDASA) ||
-                                (assembled_byte == CCC_ENEC_DIRECT) ||
-                                (assembled_byte == CCC_DISEC_DIRECT) ||
-                                (assembled_byte == CCC_GETPID) ||
-                                (assembled_byte == CCC_GETBCR) ||
-                                (assembled_byte == CCC_GETDCR) ||
-                                (assembled_byte == CCC_GETSTATUS) ||
-                                (assembled_byte == CCC_RSTACT_DIRECT)) begin
-                                pending_direct_ccc<= 1'b1;
-                                transport_holdoff <= 1'b1;
-                            end
-                            if ((assembled_byte == CCC_ENEC_BCAST) ||
-                                (assembled_byte == CCC_DISEC_BCAST)) begin
-                                pending_broadcast_data <= 1'b1;
-                                transport_holdoff      <= 1'b1;
-                            end
-                            if ((assembled_byte == CCC_ENTDAA) && !dynamic_addr_valid) begin
-                                pending_entdaa    <= 1'b1;
-                                transport_holdoff <= 1'b1;
-                            end
-                        end else if (collecting_direct_data) begin
-                            collecting_direct_data <= 1'b0;
-                            ack_context            <= ACK_DIRECT_DATA;
-                            ack_drive_low          <= direct_target_match &&
-                                                      (((current_ccc == CCC_SETDASA) && setdasa_data_valid) ||
-                                                       (current_ccc == CCC_ENEC_DIRECT) ||
-                                                       (current_ccc == CCC_DISEC_DIRECT) ||
-                                                       (current_ccc == CCC_RSTACT_DIRECT));
-
-                            if (direct_target_match) begin
-                                if ((current_ccc == CCC_SETDASA) && setdasa_data_valid) begin
-                                    setdasa_valid      <= 1'b1;
-                                    setdasa_addr       <= assembled_byte[7:1];
+                            ACK_DIRECT_ADDR: begin
+                                if (((current_ccc == CCC_SETDASA) ||
+                                     (current_ccc == CCC_ENEC_DIRECT) ||
+                                     (current_ccc == CCC_DISEC_DIRECT) ||
+                                     (current_ccc == CCC_RSTACT_DIRECT)) &&
+                                    direct_target_match && !current_rw) begin
+                                    state                  <= ST_DATA;
+                                    collecting_direct_data <= 1'b1;
+                                    bit_pos                <= 4'd0;
+                                    shift_reg              <= 8'h00;
+                                end else if ((current_ccc == CCC_GETPID) && direct_target_match && current_rw) begin
+                                    state        <= ST_READ;
+                                    read_kind    <= READ_GETPID;
+                                    read_byte_idx<= 4'd0;
+                                    read_bit_pos <= 4'd0;
+                                    read_len     <= 4'd6;
+                                    read_shift   <= pid_byte(provisional_id, 3'd0);
+                                end else if ((current_ccc == CCC_GETBCR) && direct_target_match && current_rw) begin
+                                    state        <= ST_READ;
+                                    read_kind    <= READ_GETBCR;
+                                    read_byte_idx<= 4'd0;
+                                    read_bit_pos <= 4'd0;
+                                    read_len     <= 4'd1;
+                                    read_shift   <= TARGET_BCR;
+                                end else if ((current_ccc == CCC_GETDCR) && direct_target_match && current_rw) begin
+                                    state        <= ST_READ;
+                                    read_kind    <= READ_GETDCR;
+                                    read_byte_idx<= 4'd0;
+                                    read_bit_pos <= 4'd0;
+                                    read_len     <= 4'd1;
+                                    read_shift   <= TARGET_DCR;
+                                end else if ((current_ccc == CCC_GETSTATUS) && direct_target_match && current_rw) begin
+                                    state        <= ST_READ;
+                                    read_kind    <= READ_GETSTATUS;
+                                    read_byte_idx<= 4'd0;
+                                    read_bit_pos <= 4'd0;
+                                    read_len     <= 4'd2;
+                                    read_shift   <= status_word[15:8];
+                                end else begin
                                     pending_direct_ccc <= 1'b0;
                                     transport_holdoff  <= 1'b0;
-                                end else if (current_ccc == CCC_ENEC_DIRECT) begin
-                                    event_enable_mask  <= event_enable_mask | assembled_byte;
-                                    pending_direct_ccc <= 1'b0;
-                                    transport_holdoff  <= 1'b0;
-                                end else if (current_ccc == CCC_DISEC_DIRECT) begin
-                                    event_enable_mask  <= event_enable_mask & ~assembled_byte;
-                                    pending_direct_ccc <= 1'b0;
-                                    transport_holdoff  <= 1'b0;
-                                end else if (current_ccc == CCC_RSTACT_DIRECT) begin
-                                    rstact_action      <= assembled_byte;
+                                    state <= ST_IDLE;
+                                end
+                            end
+
+                            ACK_DIRECT_DATA: begin
+                                state <= ST_IDLE;
+                            end
+
+                            ACK_BCAST_DATA: begin
+                                state <= ST_IDLE;
+                            end
+
+                            ACK_ENTDAA_ADDR: begin
+                                if (!dynamic_addr_valid && !entdaa_lost) begin
+                                    state        <= ST_READ;
+                                    read_kind    <= READ_ENTDAA;
+                                    read_byte_idx<= 4'd0;
+                                    read_bit_pos <= 4'd0;
+                                    read_len     <= 4'd8;
+                                    read_shift   <= pid_byte(provisional_id, 3'd0);
+                                end else begin
+                                    state <= ST_IDLE;
+                                end
+                            end
+
+                            ACK_ENTDAA_ASSIGN: begin
+                                state <= ST_IDLE;
+                            end
+
+                            default: begin
+                                state <= ST_IDLE;
+                            end
+                        endcase
+                    end
+
+                    ST_DATA: begin
+                        shift_reg <= assembled_byte;
+                        if (bit_pos == 4'd7) begin
+                            ack_pending <= 1'b1;
+                            bit_pos     <= 4'd0;
+                            state       <= ST_ACK;
+
+                            if (collecting_ccc_code) begin
+                                current_ccc           <= assembled_byte;
+                                last_ccc              <= assembled_byte;
+                                ccc_seen              <= 1'b1;
+                                collecting_ccc_code   <= 1'b0;
+                                ack_context           <= ACK_CCC_CODE;
+                                ack_drive_low         <= 1'b1;
+
+                                if (assembled_byte == CCC_RSTDAA) begin
+                                    rstdaa_pulse      <= 1'b1;
+                                end
+                                if (assembled_byte == CCC_SETAASA) begin
+                                    setaasa_pulse     <= 1'b1;
+                                end
+                                if ((assembled_byte == CCC_SETDASA) ||
+                                    (assembled_byte == CCC_ENEC_DIRECT) ||
+                                    (assembled_byte == CCC_DISEC_DIRECT) ||
+                                    (assembled_byte == CCC_GETPID) ||
+                                    (assembled_byte == CCC_GETBCR) ||
+                                    (assembled_byte == CCC_GETDCR) ||
+                                    (assembled_byte == CCC_GETSTATUS) ||
+                                    (assembled_byte == CCC_RSTACT_DIRECT)) begin
+                                    pending_direct_ccc<= 1'b1;
+                                    transport_holdoff <= 1'b1;
+                                end
+                                if ((assembled_byte == CCC_ENEC_BCAST) ||
+                                    (assembled_byte == CCC_DISEC_BCAST)) begin
+                                    pending_broadcast_data <= 1'b1;
+                                    transport_holdoff      <= 1'b1;
+                                end
+                                if ((assembled_byte == CCC_ENTDAA) && !dynamic_addr_valid) begin
+                                    pending_entdaa    <= 1'b1;
+                                    transport_holdoff <= 1'b1;
+                                end
+                            end else if (collecting_direct_data) begin
+                                collecting_direct_data <= 1'b0;
+                                ack_context            <= ACK_DIRECT_DATA;
+                                ack_drive_low          <= direct_target_match &&
+                                                          (((current_ccc == CCC_SETDASA) && setdasa_data_valid) ||
+                                                           (current_ccc == CCC_ENEC_DIRECT) ||
+                                                           (current_ccc == CCC_DISEC_DIRECT) ||
+                                                           (current_ccc == CCC_RSTACT_DIRECT));
+
+                                if (direct_target_match) begin
+                                    if ((current_ccc == CCC_SETDASA) && setdasa_data_valid) begin
+                                        setdasa_valid      <= 1'b1;
+                                        setdasa_addr       <= assembled_byte[7:1];
+                                        pending_direct_ccc <= 1'b0;
+                                        transport_holdoff  <= 1'b0;
+                                    end else if (current_ccc == CCC_ENEC_DIRECT) begin
+                                        event_enable_mask  <= event_enable_mask | assembled_byte;
+                                        pending_direct_ccc <= 1'b0;
+                                        transport_holdoff  <= 1'b0;
+                                    end else if (current_ccc == CCC_DISEC_DIRECT) begin
+                                        event_enable_mask  <= event_enable_mask & ~assembled_byte;
+                                        pending_direct_ccc <= 1'b0;
+                                        transport_holdoff  <= 1'b0;
+                                    end else if (current_ccc == CCC_RSTACT_DIRECT) begin
+                                        rstact_action      <= assembled_byte;
+                                        pending_direct_ccc <= 1'b0;
+                                        transport_holdoff  <= 1'b0;
+                                    end
+                                end
+                            end else if (collecting_broadcast_data) begin
+                                collecting_broadcast_data <= 1'b0;
+                                pending_broadcast_data    <= 1'b0;
+                                ack_context               <= ACK_BCAST_DATA;
+                                ack_drive_low             <= 1'b1;
+                                transport_holdoff         <= 1'b0;
+
+                                if (current_ccc == CCC_ENEC_BCAST) begin
+                                    event_enable_mask <= event_enable_mask | assembled_byte;
+                                end else if (current_ccc == CCC_DISEC_BCAST) begin
+                                    event_enable_mask <= event_enable_mask & ~assembled_byte;
+                                end
+                            end else if (collecting_entdaa_assign) begin
+                                collecting_entdaa_assign <= 1'b0;
+                                ack_context              <= ACK_ENTDAA_ASSIGN;
+                                ack_drive_low            <= entdaa_addr_valid;
+
+                                if (entdaa_addr_valid) begin
+                                    entdaa_assign_valid <= 1'b1;
+                                    entdaa_assign_addr  <= assembled_byte[7:1];
+                                    pending_entdaa      <= 1'b0;
+                                    transport_holdoff   <= 1'b0;
+                                end
+                            end
+                        end else begin
+                            bit_pos <= bit_pos + 1'b1;
+                        end
+                    end
+
+                    ST_READ: begin
+                        if (read_bit_pos < 4'd8) begin
+                            if ((read_kind == READ_ENTDAA) &&
+                                read_shift[7 - read_bit_pos[2:0]] &&
+                                (sda == 1'b0)) begin
+                                state       <= ST_WAIT_STOP;
+                                entdaa_lost <= 1'b1;
+                                read_kind   <= READ_NONE;
+                                read_len    <= 4'd0;
+                                read_bit_pos<= 4'd0;
+                            end else if (read_bit_pos < 4'd7) begin
+                                read_bit_pos <= read_bit_pos + 1'b1;
+                            end else begin
+                                read_bit_pos <= 4'd8;
+                            end
+                        end else begin
+                            if ((read_byte_idx + 1'b1) < read_len) begin
+                                read_byte_idx <= read_byte_idx + 1'b1;
+                                read_shift    <= read_byte_value(read_kind, read_byte_idx + 1'b1, provisional_id);
+                                read_bit_pos  <= 4'd0;
+                            end else begin
+                                read_bit_pos <= 4'd0;
+                                if (read_kind == READ_ENTDAA) begin
+                                    state                   <= ST_DATA;
+                                    collecting_entdaa_assign<= 1'b1;
+                                    bit_pos                 <= 4'd0;
+                                    shift_reg               <= 8'h00;
+                                end else begin
+                                    state              <= ST_IDLE;
                                     pending_direct_ccc <= 1'b0;
                                     transport_holdoff  <= 1'b0;
                                 end
+                                read_kind <= READ_NONE;
+                                read_len  <= 4'd0;
                             end
-                        end else if (collecting_broadcast_data) begin
-                            collecting_broadcast_data <= 1'b0;
-                            pending_broadcast_data    <= 1'b0;
-                            ack_context               <= ACK_BCAST_DATA;
-                            ack_drive_low             <= 1'b1;
-                            transport_holdoff         <= 1'b0;
-
-                            if (current_ccc == CCC_ENEC_BCAST) begin
-                                event_enable_mask <= event_enable_mask | assembled_byte;
-                            end else if (current_ccc == CCC_DISEC_BCAST) begin
-                                event_enable_mask <= event_enable_mask & ~assembled_byte;
-                            end
-                        end else if (collecting_entdaa_assign) begin
-                            collecting_entdaa_assign <= 1'b0;
-                            ack_context              <= ACK_ENTDAA_ASSIGN;
-                            ack_drive_low            <= entdaa_addr_valid;
-
-                            if (entdaa_addr_valid) begin
-                                entdaa_assign_valid <= 1'b1;
-                                entdaa_assign_addr  <= assembled_byte[7:1];
-                                pending_entdaa      <= 1'b0;
-                                transport_holdoff   <= 1'b0;
-                            end
-                        end
-                    end else begin
-                        bit_pos <= bit_pos + 1'b1;
-                    end
-                end
-
-                ST_READ: begin
-                    if (read_bit_pos < 4'd8) begin
-                        if ((read_kind == READ_ENTDAA) &&
-                            read_shift[7 - read_bit_pos[2:0]] &&
-                            (sda == 1'b0)) begin
-                            state       <= ST_WAIT_STOP;
-                            entdaa_lost <= 1'b1;
-                            read_kind   <= READ_NONE;
-                            read_len    <= 4'd0;
-                            read_bit_pos<= 4'd0;
-                        end else if (read_bit_pos < 4'd7) begin
-                            read_bit_pos <= read_bit_pos + 1'b1;
-                        end else begin
-                            read_bit_pos <= 4'd8;
-                        end
-                    end else begin
-                        if ((read_byte_idx + 1'b1) < read_len) begin
-                            read_byte_idx <= read_byte_idx + 1'b1;
-                            read_shift    <= read_byte_value(read_kind, read_byte_idx + 1'b1, provisional_id);
-                            read_bit_pos  <= 4'd0;
-                        end else begin
-                            read_bit_pos <= 4'd0;
-                            if (read_kind == READ_ENTDAA) begin
-                                state                   <= ST_DATA;
-                                collecting_entdaa_assign<= 1'b1;
-                                bit_pos                 <= 4'd0;
-                                shift_reg               <= 8'h00;
-                            end else begin
-                                state              <= ST_IDLE;
-                                pending_direct_ccc <= 1'b0;
-                                transport_holdoff  <= 1'b0;
-                            end
-                            read_kind <= READ_NONE;
-                            read_len  <= 4'd0;
                         end
                     end
-                end
 
-                ST_WAIT_STOP: begin
-                    // Another target won ENTDAA arbitration for this cycle.
-                    // Stay quiet until the controller issues a new START.
-                end
+                    ST_WAIT_STOP: begin
+                        // Another target won ENTDAA arbitration for this cycle.
+                        // Stay quiet until the controller issues a new START.
+                    end
 
-                default: begin
-                    state <= ST_IDLE;
-                end
-            endcase
+                    default: begin
+                        state <= ST_IDLE;
+                    end
+                endcase
+            end
         end
     end
 endmodule

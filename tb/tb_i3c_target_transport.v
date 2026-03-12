@@ -24,6 +24,8 @@ module tb_i3c_target_transport;
     wire scl_line;
     wire sda_line;
 
+    wire target_sda_drive_en;
+
     reg  [7:0] target_read_data;
     wire [7:0] target_write_data;
     wire       target_write_valid;
@@ -35,10 +37,9 @@ module tb_i3c_target_transport;
     reg        target_selected_seen;
 
     pullup (scl_line);
-    pullup (sda_line);
 
     assign scl_line = scl_oe ? scl_o : 1'bz;
-    assign sda_line = sda_oe ? sda_o : 1'bz;
+    assign sda_line = ~((sda_oe & ~sda_o) | target_sda_drive_en);
     assign sda_i    = sda_line;
 
     i3c_sdr_controller #(
@@ -65,9 +66,11 @@ module tb_i3c_target_transport;
     );
 
     i3c_target_transport tgt (
+        .clk        (clk),
         .rst_n      (rst_n),
         .scl        (scl_line),
         .sda        (sda_line),
+        .sda_drive_en(target_sda_drive_en),
         .suppress   (1'b0),
         .target_addr(7'h2A),
         .read_data  ({24'h000000, target_read_data}),

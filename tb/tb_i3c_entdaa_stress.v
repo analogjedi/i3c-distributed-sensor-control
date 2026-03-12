@@ -57,6 +57,13 @@ module tb_i3c_entdaa_stress;
     wire scl_line;
     wire sda_line;
 
+    wire target0_sda_oe;
+    wire target1_sda_oe;
+    wire target2_sda_oe;
+    wire target3_sda_oe;
+    wire target4_sda_oe;
+    wire target5_sda_oe;
+
     reg  [7:0] read_data_0;
     reg  [7:0] read_data_1;
     reg  [7:0] read_data_2;
@@ -114,12 +121,10 @@ module tb_i3c_entdaa_stress;
     wire [7:0]  last_ccc_5;
 
     pullup (scl_line);
-    pullup (sda_line);
 
     assign scl_line = entdaa_scl_oe ? entdaa_scl_o : 1'bz;
     assign scl_line = rw_scl_oe     ? rw_scl_o     : 1'bz;
-    assign sda_line = entdaa_sda_oe ? entdaa_sda_o : 1'bz;
-    assign sda_line = rw_sda_oe     ? rw_sda_o     : 1'bz;
+    assign sda_line = ~((entdaa_sda_oe & ~entdaa_sda_o) | (rw_sda_oe & ~rw_sda_o) | target0_sda_oe | target1_sda_oe | target2_sda_oe | target3_sda_oe | target4_sda_oe | target5_sda_oe);
 
     i3c_ctrl_entdaa #(
         .CLK_FREQ_HZ(100_000_000),
@@ -268,6 +273,7 @@ module tb_i3c_entdaa_stress;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target0_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(1'b0),
         .assign_dynamic_addr     (7'h00),
@@ -292,6 +298,7 @@ module tb_i3c_entdaa_stress;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target1_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(1'b0),
         .assign_dynamic_addr     (7'h00),
@@ -316,6 +323,7 @@ module tb_i3c_entdaa_stress;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target2_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(1'b0),
         .assign_dynamic_addr     (7'h00),
@@ -340,6 +348,7 @@ module tb_i3c_entdaa_stress;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target3_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(1'b0),
         .assign_dynamic_addr     (7'h00),
@@ -364,6 +373,7 @@ module tb_i3c_entdaa_stress;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target4_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(1'b0),
         .assign_dynamic_addr     (7'h00),
@@ -388,6 +398,7 @@ module tb_i3c_entdaa_stress;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target5_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(1'b0),
         .assign_dynamic_addr     (7'h00),

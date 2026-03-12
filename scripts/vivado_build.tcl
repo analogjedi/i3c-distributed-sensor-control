@@ -31,7 +31,7 @@ add_files [glob rtl/*.v]
 add_files [glob rtl/fpga_test/*.v]
 add_files -fileset constrs_1 constraints/spartan7_i3c_demo.xdc
 
-set_property top spartan7_i3c_controller_demo_top [current_fileset]
+set_property top spartan7_i3c_unified_demo_top [current_fileset]
 update_compile_order -fileset sources_1
 
 # Synthesis

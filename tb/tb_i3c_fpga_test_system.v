@@ -10,7 +10,13 @@ module tb_i3c_fpga_test_system;
     wire sda_o;
     wire sda_oe;
     tri1 scl_line;
-    tri1 sda_line;
+    wire sda_line;
+
+    wire target0_sda_oe;
+    wire target1_sda_oe;
+    wire target2_sda_oe;
+    wire target3_sda_oe;
+    wire target4_sda_oe;
 
     wire       boot_done;
     wire       boot_error;
@@ -38,7 +44,7 @@ module tb_i3c_fpga_test_system;
     wire [7:0]  selector_4;
 
     assign scl_line = scl_oe ? scl_o : 1'bz;
-    assign sda_line = sda_oe ? sda_o : 1'bz;
+    assign sda_line = ~((sda_oe & ~sda_o) | target0_sda_oe | target1_sda_oe | target2_sda_oe | target3_sda_oe | target4_sda_oe);
 
     i3c_sensor_controller_demo u_ctrl_demo (
         .clk                   (clk),
@@ -67,6 +73,7 @@ module tb_i3c_fpga_test_system;
         .rst_n          (rst_n),
         .scl            (scl_line),
         .sda            (sda_line),
+        .sda_oe         (target0_sda_oe),
         .sample_payload (sample_payload_0),
         .frame_counter  (frame_counter_0),
         .register_selector(selector_0),
@@ -84,6 +91,7 @@ module tb_i3c_fpga_test_system;
         .rst_n          (rst_n),
         .scl            (scl_line),
         .sda            (sda_line),
+        .sda_oe         (target1_sda_oe),
         .sample_payload (sample_payload_1),
         .frame_counter  (frame_counter_1),
         .register_selector(selector_1),
@@ -101,6 +109,7 @@ module tb_i3c_fpga_test_system;
         .rst_n          (rst_n),
         .scl            (scl_line),
         .sda            (sda_line),
+        .sda_oe         (target2_sda_oe),
         .sample_payload (sample_payload_2),
         .frame_counter  (frame_counter_2),
         .register_selector(selector_2),
@@ -118,6 +127,7 @@ module tb_i3c_fpga_test_system;
         .rst_n          (rst_n),
         .scl            (scl_line),
         .sda            (sda_line),
+        .sda_oe         (target3_sda_oe),
         .sample_payload (sample_payload_3),
         .frame_counter  (frame_counter_3),
         .register_selector(selector_3),
@@ -135,6 +145,7 @@ module tb_i3c_fpga_test_system;
         .rst_n          (rst_n),
         .scl            (scl_line),
         .sda            (sda_line),
+        .sda_oe         (target4_sda_oe),
         .sample_payload (sample_payload_4),
         .frame_counter  (frame_counter_4),
         .register_selector(selector_4),

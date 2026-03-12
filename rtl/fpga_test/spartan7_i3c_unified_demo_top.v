@@ -1,9 +1,13 @@
 `timescale 1ns/1ps
 
-// Board-facing top for Digilent CMOD S7 (XC7S25-1CSGA225)
+// Unified single-board demo for Digilent CMOD S7 (XC7S25-1CSGA225)
+// Controller + 5 targets on one FPGA — no external I3C pins needed.
 // 12 MHz board oscillator → MMCM → 100 MHz system clock
+//
+// Internal open-drain bus: explicit wired-AND of all drivers.
+// SCL driven by controller only; SDA driven by controller + 5 targets.
 
-module spartan7_i3c_controller_demo_top #(
+module spartan7_i3c_unified_demo_top #(
     parameter integer CLK_FREQ_HZ = 100_000_000,
     parameter integer I3C_SDR_HZ  = 12_500_000
 ) (
@@ -13,8 +17,6 @@ module spartan7_i3c_controller_demo_top #(
     output wire       led_sv4,            // RGB blue — sample_valid[4]
     output wire       led_boot_done,      // RGB green
     output wire       led_error,          // RGB red
-    inout  wire       i3c_scl,
-    inout  wire       i3c_sda,
     output wire       uart_txd,           // FPGA → PC (FT2232H)
     input  wire       uart_rxd            // PC → FPGA (FT2232H)
 );
@@ -66,30 +68,6 @@ module spartan7_i3c_controller_demo_top #(
     wire sys_rst_n = mmcm_locked & ~btn_reset;
 
     // ----------------------------------------------------------------
-    // I3C open-drain I/O buffers
-    // ----------------------------------------------------------------
-    wire scl_o;
-    wire scl_oe;
-    wire sda_o;
-    wire sda_oe;
-    wire sda_i;
-    wire scl_i_unused;
-
-    IOBUF iobuf_scl (
-        .I  (scl_o),
-        .O  (scl_i_unused),
-        .IO (i3c_scl),
-        .T  (~scl_oe)
-    );
-
-    IOBUF iobuf_sda (
-        .I  (sda_o),
-        .O  (sda_i),
-        .IO (i3c_sda),
-        .T  (~sda_oe)
-    );
-
-    // ----------------------------------------------------------------
     // UART command interface
     // ----------------------------------------------------------------
     wire [7:0] uart_rx_data;
@@ -136,6 +114,29 @@ module spartan7_i3c_controller_demo_top #(
     wire demo_rst_n = sys_rst_n & demo_started;
 
     // ----------------------------------------------------------------
+    // Internal open-drain I3C bus (wired-AND)
+    //
+    // SCL and SDA are open-drain.  All driver-enable signals are
+    // combined explicitly into a wired-AND:
+    //   bus = ~(driver_0_pulling_low | driver_1_pulling_low | …)
+    // Bus idles high (1) when nobody drives.
+    // ----------------------------------------------------------------
+    wire scl_bus;
+    wire sda_bus;
+
+    wire ctrl_scl_o, ctrl_scl_oe;
+    wire ctrl_sda_o, ctrl_sda_oe;
+    wire tgt0_sda_oe, tgt1_sda_oe, tgt2_sda_oe, tgt3_sda_oe, tgt4_sda_oe;
+
+    assign scl_bus = ~(ctrl_scl_oe & ~ctrl_scl_o);
+    assign sda_bus = ~( (ctrl_sda_oe & ~ctrl_sda_o) |
+                        tgt0_sda_oe |
+                        tgt1_sda_oe |
+                        tgt2_sda_oe |
+                        tgt3_sda_oe |
+                        tgt4_sda_oe );
+
+    // ----------------------------------------------------------------
     // Controller demo core
     // ----------------------------------------------------------------
     wire boot_done;
@@ -152,14 +153,14 @@ module spartan7_i3c_controller_demo_top #(
     i3c_sensor_controller_demo #(
         .CLK_FREQ_HZ (CLK_FREQ_HZ),
         .I3C_SDR_HZ  (I3C_SDR_HZ)
-    ) u_demo (
+    ) u_ctrl (
         .clk                       (clk_100m),
         .rst_n                     (demo_rst_n),
-        .scl_o                     (scl_o),
-        .scl_oe                    (scl_oe),
-        .sda_o                     (sda_o),
-        .sda_oe                    (sda_oe),
-        .sda_i                     (sda_i),
+        .scl_o                     (ctrl_scl_o),
+        .scl_oe                    (ctrl_scl_oe),
+        .sda_o                     (ctrl_sda_o),
+        .sda_oe                    (ctrl_sda_oe),
+        .sda_i                     (sda_bus),
         .boot_done                 (boot_done),
         .boot_error                (boot_error),
         .capture_error             (capture_error),
@@ -168,6 +169,107 @@ module spartan7_i3c_controller_demo_top #(
         .sample_capture_count_flat (),
         .last_service_addr         (),
         .last_service_count        ()
+    );
+
+    // ----------------------------------------------------------------
+    // 5× Target instances (STATIC_ADDR 0x30–0x34)
+    //
+    // Each target exposes sda_oe (open-drain pull-low enable).
+    // The wired-AND above combines all drivers.
+    // ----------------------------------------------------------------
+    i3c_sensor_target_demo #(
+        .CLK_FREQ_HZ    (CLK_FREQ_HZ),
+        .STATIC_ADDR     (7'h30),
+        .TARGET_INDEX    (0),
+        .PROVISIONAL_ID  (48'h4100_0000_0001)
+    ) u_tgt0 (
+        .clk               (clk_100m),
+        .rst_n              (demo_rst_n),
+        .scl                (scl_bus),
+        .sda                (sda_bus),
+        .sda_oe             (tgt0_sda_oe),
+        .sample_payload     (),
+        .frame_counter      (),
+        .register_selector  (),
+        .active_addr        (),
+        .dynamic_addr_valid (),
+        .read_valid         ()
+    );
+
+    i3c_sensor_target_demo #(
+        .CLK_FREQ_HZ    (CLK_FREQ_HZ),
+        .STATIC_ADDR     (7'h31),
+        .TARGET_INDEX    (1),
+        .PROVISIONAL_ID  (48'h4100_0000_0002)
+    ) u_tgt1 (
+        .clk               (clk_100m),
+        .rst_n              (demo_rst_n),
+        .scl                (scl_bus),
+        .sda                (sda_bus),
+        .sda_oe             (tgt1_sda_oe),
+        .sample_payload     (),
+        .frame_counter      (),
+        .register_selector  (),
+        .active_addr        (),
+        .dynamic_addr_valid (),
+        .read_valid         ()
+    );
+
+    i3c_sensor_target_demo #(
+        .CLK_FREQ_HZ    (CLK_FREQ_HZ),
+        .STATIC_ADDR     (7'h32),
+        .TARGET_INDEX    (2),
+        .PROVISIONAL_ID  (48'h4100_0000_0003)
+    ) u_tgt2 (
+        .clk               (clk_100m),
+        .rst_n              (demo_rst_n),
+        .scl                (scl_bus),
+        .sda                (sda_bus),
+        .sda_oe             (tgt2_sda_oe),
+        .sample_payload     (),
+        .frame_counter      (),
+        .register_selector  (),
+        .active_addr        (),
+        .dynamic_addr_valid (),
+        .read_valid         ()
+    );
+
+    i3c_sensor_target_demo #(
+        .CLK_FREQ_HZ    (CLK_FREQ_HZ),
+        .STATIC_ADDR     (7'h33),
+        .TARGET_INDEX    (3),
+        .PROVISIONAL_ID  (48'h4100_0000_0004)
+    ) u_tgt3 (
+        .clk               (clk_100m),
+        .rst_n              (demo_rst_n),
+        .scl                (scl_bus),
+        .sda                (sda_bus),
+        .sda_oe             (tgt3_sda_oe),
+        .sample_payload     (),
+        .frame_counter      (),
+        .register_selector  (),
+        .active_addr        (),
+        .dynamic_addr_valid (),
+        .read_valid         ()
+    );
+
+    i3c_sensor_target_demo #(
+        .CLK_FREQ_HZ    (CLK_FREQ_HZ),
+        .STATIC_ADDR     (7'h34),
+        .TARGET_INDEX    (4),
+        .PROVISIONAL_ID  (48'h4100_0000_0005)
+    ) u_tgt4 (
+        .clk               (clk_100m),
+        .rst_n              (demo_rst_n),
+        .scl                (scl_bus),
+        .sda                (sda_bus),
+        .sda_oe             (tgt4_sda_oe),
+        .sample_payload     (),
+        .frame_counter      (),
+        .register_selector  (),
+        .active_addr        (),
+        .dynamic_addr_valid (),
+        .read_valid         ()
     );
 
     // ----------------------------------------------------------------

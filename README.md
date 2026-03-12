@@ -133,6 +133,11 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `rtl/fpga_test/i3c_sensor_controller_demo.v`: Controller demo wrapper that performs static-assisted `SETDASA` boot, configures all 5 endpoints, and captures payloads into controller-side buffers.
 - `rtl/fpga_test/spartan7_i3c_controller_demo_top.v`: Spartan-7 controller wrapper for the FPGA-validation stack.
 - `rtl/fpga_test/spartan7_i3c_target_demo_top.v`: Spartan-7 target wrapper for the FPGA-validation stack.
+- `rtl/fpga_test/spartan7_i3c_unified_demo_top.v`: Unified single-board demo: controller + 5 internal targets + UART command interface.
+- `rtl/uart_tx.v`: 8N1 UART transmitter (115200 baud, 100 MHz clock).
+- `rtl/uart_rx.v`: 8N1 UART receiver with double-flop synchronizer.
+- `rtl/uart_cmd_handler.v`: UART command state machine for demo control (start/read/status).
+- `tools/uart_interface.py`: Python pyserial host tool for UART command interface.
 - `tb/i3c_target_model.v`: Simple behavioral target model for simulation.
 - `tb/tb_i3c_sdr_controller.v`: Happy-path testbench that runs one write + one read transaction.
 - `tb/tb_i3c_sdr_nack.v`: Negative-path testbench that verifies address-miss NACK handling.
@@ -155,12 +160,17 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `tb/tb_i3c_event_policy_ccc.v`: Integration regression for `ENEC`/`DISEC` target policy updates and mirrored controller-side event-mask state.
 - `tb/tb_i3c_reset_status_policy.v`: Integration regression for direct `RSTACT`/`GETSTATUS`, broadcast `RSTDAA`/`SETAASA`, and mirrored controller-side reset/status policy tracking across recovery transitions.
 - `tb/tb_i3c_recovery_sequence.v`: Focused controller-policy regression for timed retry, reset-style cooldown, forced-disable escalation, and explicit recovery clear behavior.
-- `constraints/spartan7_i3c_demo.xdc`: Constraint template to adapt to your board.
+- `constraints/spartan7_i3c_demo.xdc`: CMOD S7 pin constraints for unified demo (UART + LEDs, internal I3C bus).
+- `reference/cmod_s7/`: Original CMOD S7 board-adaptation files (XDC, controller-only top, build/program scripts).
+- `scripts/vivado_build.tcl`: Vivado batch build script (defaults to CMOD S7 XC7S25).
+- `scripts/program_cmod_s7.tcl`: JTAG programming script for CMOD S7.
 - `Makefile`: Simulation runner (`iverilog` + `vvp`).
 - `docs/I3C_Closed_System_IP_Plan.md`: original program plan.
 - `docs/I3C_Architecture_Baseline.md`: consolidated architecture and phase baseline.
 - `docs/I3C_Compatibility_Contract_v0_1.md`: initial closed-system interoperability contract.
 - `docs/I3C_Controller_Target_Implementation_Plan.md`: detailed controller/target RTL implementation plan.
+- `docs/FPGA_Synthesis_Notes.md`: FPGA synthesis technical notes — async-to-sync rewrite, open-drain bus, MMCM, bitstream config.
+- `docs/UART_Interface.md`: UART command protocol and Python tool documentation.
 - `docs/chat_summaries/`: archived markdown summaries from the earlier project threads.
 
 ## Important Scope Notes
@@ -246,7 +256,107 @@ In short:
 - The remaining Phase 1 work is controller-driven address-state recovery/rekeying beyond the current policy-local sequencing baseline, plus selective IBI.
 - The current recommended long-term Hub-side IP candidate remains `chipsalliance/i3c-core`, with this repo acting as the planning and baseline-validation anchor.
 
-## Vivado Bring-up
+## Hardware Bring-Up: CMOD S7
+
+The I3C demo has been brought up on a **Digilent CMOD S7** (XC7S25-1CSGA225). Two demo configurations are available:
+
+| Configuration | Top Module | External I3C Pins | UART | Use Case |
+| --- | --- | --- | --- | --- |
+| Controller-only | `spartan7_i3c_controller_demo_top` | Yes (Pmod JA) | No | External target boards on real bus |
+| Unified (recommended) | `spartan7_i3c_unified_demo_top` | No | Yes | Self-contained demo, controller + 5 targets on one FPGA |
+
+### Quick Start — Unified Demo
+
+Build the bitstream:
+
+```bash
+vivado -mode batch -source scripts/vivado_build.tcl
+```
+
+This defaults to part `xc7s25csga225-1` and project name `i3c_demo`. Override with:
+
+```bash
+vivado -mode batch -source scripts/vivado_build.tcl -tclargs <part> <project_name>
+```
+
+Program the CMOD S7 over JTAG:
+
+```bash
+vivado -mode batch -source scripts/program_cmod_s7.tcl
+```
+
+The bitstream path is `build/i3c_demo/i3c_demo.runs/impl_1/spartan7_i3c_controller_demo_top.bit`.
+
+### UART Interface
+
+The unified demo exposes a UART command interface at **115200 baud, 8N1** over the FT2232H USB-UART bridge (FPGA TX=L12, RX=K15). A Python host tool is provided:
+
+```bash
+# Install dependency
+pip install pyserial
+
+# Trigger I3C boot sequence
+python tools/uart_interface.py start
+
+# Check status
+python tools/uart_interface.py status
+
+# Read all 5 targets' sensor payloads
+python tools/uart_interface.py read
+
+# Continuous monitoring (status every 2s, payloads every 5s)
+python tools/uart_interface.py monitor
+```
+
+The tool auto-detects the CMOD S7 FTDI port. Use `--port /dev/ttyUSBx` to override.
+
+For full protocol details, see [docs/UART_Interface.md](docs/UART_Interface.md).
+
+### LED Indicators
+
+| LED | Signal | Meaning |
+| --- | --- | --- |
+| LED0–LED3 (discrete) | `sample_valid[3:0]` | Target 0–3 payload captured |
+| RGB blue | `sample_valid[4]` | Target 4 payload captured |
+| RGB green | `boot_done` | I3C bus bring-up complete |
+| RGB red | `boot_error \| capture_error` | Any error during boot or capture |
+
+### Hardware Connections (Controller-Only Mode)
+
+When using `spartan7_i3c_controller_demo_top` with external target boards:
+
+| Signal | Pmod JA Pin | Package Pin | Notes |
+| --- | --- | --- | --- |
+| SCL | JA1 | J2 | External 1k–4.7k pull-up to 3.3V recommended |
+| SDA | JA2 | H2 | External 1k–4.7k pull-up to 3.3V recommended |
+
+Internal pull-ups are enabled as a lab fallback. Both pins use FAST slew rate, 8 mA drive, LVCMOS33.
+
+### Clock Architecture
+
+The CMOD S7 provides a 12 MHz oscillator. An MMCME2_BASE generates the 100 MHz system clock:
+
+- VCO = 12 MHz × 62.5 = 750 MHz
+- CLKOUT0 = 750 / 7.5 = 100 MHz
+
+System reset is held until the MMCM locks and BTN0 is released.
+
+### Synthesis Notes
+
+The target-side transport and CCC modules required a critical rewrite from asynchronous multi-edge-driven RTL to fully synchronous logic for FPGA synthesis. See [docs/FPGA_Synthesis_Notes.md](docs/FPGA_Synthesis_Notes.md) for the full technical write-up.
+
+### Reference Files
+
+The original CMOD S7 board-adaptation work is preserved under `reference/cmod_s7/`:
+
+- `spartan7_i3c_demo.xdc` — initial XDC for external-bus controller-only mode
+- `spartan7_i3c_controller_demo_top.v` — controller-only top with IOBUF instantiation
+- `vivado_build.tcl` — Vivado batch build script (now also at `scripts/vivado_build.tcl`)
+- `program_cmod_s7.tcl` — JTAG programming script (now also at `scripts/program_cmod_s7.tcl`)
+
+## Vivado Bring-up (Generic)
+
+For boards other than the CMOD S7:
 
 1. Create a new Vivado RTL project targeting your Spartan-7 part/board.
 2. Add:
