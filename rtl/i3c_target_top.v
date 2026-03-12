@@ -10,7 +10,8 @@ module i3c_target_top #(
     input  wire       clk,
     input  wire       rst_n,
     input  wire       scl,
-    inout  wire       sda,
+    input  wire       sda,
+    output wire       sda_oe,
 
     input  wire       clear_dynamic_addr,
     input  wire       assign_dynamic_addr_valid,
@@ -39,11 +40,14 @@ module i3c_target_top #(
     wire [6:0] ccc_entdaa_assign_addr;
     wire ccc_transport_holdoff;
     wire ccc_seen;
+    wire transport_sda_drive_en;
+    wire ccc_sda_drive_en;
     wire target_assign_dynamic_addr_valid;
     wire [6:0] target_assign_dynamic_addr;
     reg  [7:0] register_selector_r;
 
     assign register_selector = register_selector_r;
+    assign sda_oe = transport_sda_drive_en | ccc_sda_drive_en;
 
     assign target_assign_dynamic_addr_valid = assign_dynamic_addr_valid |
                                               ccc_setdasa_valid |
@@ -69,16 +73,17 @@ module i3c_target_top #(
     i3c_target_transport #(
         .MAX_READ_BYTES(MAX_READ_BYTES)
     ) u_target_transport (
-        .rst_n      (rst_n),
-        .scl        (scl),
-        .sda        (sda),
-        .suppress   (ccc_transport_holdoff),
-        .read_data  (read_data),
-        .write_data (write_data),
-        .write_valid(write_valid),
-        .read_valid (read_valid),
-        .selected   (selected),
-        .target_addr(active_addr)
+        .rst_n       (rst_n),
+        .scl         (scl),
+        .sda         (sda),
+        .sda_drive_en(transport_sda_drive_en),
+        .suppress    (ccc_transport_holdoff),
+        .read_data   (read_data),
+        .write_data  (write_data),
+        .write_valid (write_valid),
+        .read_valid  (read_valid),
+        .selected    (selected),
+        .target_addr (active_addr)
     );
 
     always @(posedge write_valid or negedge rst_n) begin
@@ -97,6 +102,7 @@ module i3c_target_top #(
         .rst_n            (rst_n),
         .scl              (scl),
         .sda              (sda),
+        .sda_drive_en     (ccc_sda_drive_en),
         .active_addr      (active_addr),
         .dynamic_addr_valid(dynamic_addr_valid),
         .provisional_id   (provisional_id),

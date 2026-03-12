@@ -44,6 +44,8 @@ module tb_i3c_setdasa;
     wire scl_line;
     wire sda_line;
 
+    wire target_sda_oe;
+
     reg  [7:0] read_data;
     wire [7:0] write_data;
     wire       write_valid;
@@ -57,12 +59,10 @@ module tb_i3c_setdasa;
     reg write_seen_during_setdasa;
 
     pullup (scl_line);
-    pullup (sda_line);
 
     assign scl_line = dccc_scl_oe ? dccc_scl_o : 1'bz;
     assign scl_line = rw_scl_oe   ? rw_scl_o   : 1'bz;
-    assign sda_line = dccc_sda_oe ? dccc_sda_o : 1'bz;
-    assign sda_line = rw_sda_oe   ? rw_sda_o   : 1'bz;
+    assign sda_line = ~((dccc_sda_oe & ~dccc_sda_o) | (rw_sda_oe & ~rw_sda_o) | target_sda_oe);
 
     i3c_ctrl_direct_ccc #(
         .CLK_FREQ_HZ(100_000_000),
@@ -124,6 +124,7 @@ module tb_i3c_setdasa;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(1'b0),
         .assign_dynamic_addr     (7'h00),

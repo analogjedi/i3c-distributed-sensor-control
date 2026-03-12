@@ -21,7 +21,8 @@ module i3c_target_ccc #(
 ) (
     input  wire       rst_n,
     input  wire       scl,
-    inout  wire       sda,
+    input  wire       sda,
+    output wire       sda_drive_en,
     input  wire [6:0] active_addr,
     input  wire       dynamic_addr_valid,
     input  wire [47:0] provisional_id,
@@ -154,7 +155,7 @@ module i3c_target_ccc #(
         end
     endfunction
 
-    assign sda = sda_drive_low ? 1'b0 : 1'bz;
+    assign sda_drive_en = sda_drive_low;
 
     always @(negedge sda or negedge rst_n) begin
         if (!rst_n) begin

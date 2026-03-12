@@ -30,6 +30,8 @@ module tb_i3c_getstatus;
     wire scl_line;
     wire sda_line;
 
+    wire target_sda_oe;
+
     reg        assign_dynamic_addr_valid;
     reg [6:0]  assign_dynamic_addr;
     reg  [7:0] read_data;
@@ -46,10 +48,9 @@ module tb_i3c_getstatus;
     wire [7:0]  last_ccc;
 
     pullup (scl_line);
-    pullup (sda_line);
 
     assign scl_line = scl_oe ? scl_o : 1'bz;
-    assign sda_line = sda_oe ? sda_o : 1'bz;
+    assign sda_line = ~((sda_oe & ~sda_o) | target_sda_oe);
     assign sda_i    = sda_line;
 
     i3c_ctrl_direct_ccc #(
@@ -89,6 +90,7 @@ module tb_i3c_getstatus;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid),
         .assign_dynamic_addr     (assign_dynamic_addr),

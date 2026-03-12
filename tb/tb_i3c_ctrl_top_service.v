@@ -59,6 +59,11 @@ module tb_i3c_ctrl_top_service;
     wire scl_line;
     wire sda_line;
 
+    wire target0_sda_oe;
+    wire target1_sda_oe;
+    wire target2_sda_oe;
+    wire target3_sda_oe;
+
     reg        assign_dynamic_addr_valid_0;
     reg  [6:0] assign_dynamic_addr_0;
     reg        assign_dynamic_addr_valid_1;
@@ -103,10 +108,9 @@ module tb_i3c_ctrl_top_service;
     reg [7:0]  write_count_3;
 
     pullup (scl_line);
-    pullup (sda_line);
 
     assign scl_line = scl_oe ? scl_o : 1'bz;
-    assign sda_line = sda_oe ? sda_o : 1'bz;
+    assign sda_line = ~((sda_oe & ~sda_o) | target0_sda_oe | target1_sda_oe | target2_sda_oe | target3_sda_oe);
 
     i3c_ctrl_top #(
         .MAX_ENDPOINTS(6),
@@ -203,6 +207,7 @@ module tb_i3c_ctrl_top_service;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target0_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid_0),
         .assign_dynamic_addr     (assign_dynamic_addr_0),
@@ -231,6 +236,7 @@ module tb_i3c_ctrl_top_service;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target1_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid_1),
         .assign_dynamic_addr     (assign_dynamic_addr_1),
@@ -259,6 +265,7 @@ module tb_i3c_ctrl_top_service;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target2_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid_2),
         .assign_dynamic_addr     (assign_dynamic_addr_2),
@@ -287,6 +294,7 @@ module tb_i3c_ctrl_top_service;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target3_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid_3),
         .assign_dynamic_addr     (assign_dynamic_addr_3),

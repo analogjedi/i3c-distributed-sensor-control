@@ -5,7 +5,8 @@ module i3c_target_transport #(
 ) (
     input  wire       rst_n,
     input  wire       scl,
-    inout  wire       sda,
+    input  wire       sda,
+    output wire       sda_drive_en,
 
     input  wire       suppress,
     input  wire [6:0] target_addr,
@@ -46,7 +47,7 @@ module i3c_target_transport #(
 
     wire [7:0] current_read_byte = get_read_byte(read_data, read_byte_idx);
 
-    assign sda = sda_drive_low ? 1'b0 : 1'bz;
+    assign sda_drive_en = sda_drive_low;
 
     // Phase 1+ hooks:
     // - DAA logic will own dynamic address state rather than this fixed TARGET_ADDR.

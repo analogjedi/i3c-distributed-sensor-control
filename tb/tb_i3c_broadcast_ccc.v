@@ -46,6 +46,8 @@ module tb_i3c_broadcast_ccc;
     wire scl_line;
     wire sda_line;
 
+    wire target_sda_oe;
+
     reg        clear_dynamic_addr;
     reg        assign_dynamic_addr_valid;
     reg [6:0]  assign_dynamic_addr;
@@ -60,10 +62,9 @@ module tb_i3c_broadcast_ccc;
     wire [7:0] last_ccc;
 
     pullup (scl_line);
-    pullup (sda_line);
 
     assign scl_line = scl_oe ? scl_o : 1'bz;
-    assign sda_line = sda_oe ? sda_o : 1'bz;
+    assign sda_line = ~((sda_oe & ~sda_o) | target_sda_oe);
     assign sda_i    = sda_line;
 
     i3c_ctrl_txn_layer #(
@@ -127,6 +128,7 @@ module tb_i3c_broadcast_ccc;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target_sda_oe),
         .clear_dynamic_addr      (clear_dynamic_addr),
         .assign_dynamic_addr_valid(assign_dynamic_addr_valid),
         .assign_dynamic_addr     (assign_dynamic_addr),

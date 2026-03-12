@@ -30,6 +30,8 @@ module tb_i3c_getpid;
     wire scl_line;
     wire sda_line;
 
+    wire target_sda_oe;
+
     reg  [7:0] read_data;
     wire [7:0] write_data;
     wire       write_valid;
@@ -43,10 +45,9 @@ module tb_i3c_getpid;
     reg write_seen_during_getpid;
 
     pullup (scl_line);
-    pullup (sda_line);
 
     assign scl_line = scl_oe ? scl_o : 1'bz;
-    assign sda_line = sda_oe ? sda_o : 1'bz;
+    assign sda_line = ~((sda_oe & ~sda_o) | target_sda_oe);
     assign sda_i    = sda_line;
 
     i3c_ctrl_direct_ccc #(
@@ -86,6 +87,7 @@ module tb_i3c_getpid;
         .rst_n                   (rst_n),
         .scl                     (scl_line),
         .sda                     (sda_line),
+        .sda_oe                  (target_sda_oe),
         .clear_dynamic_addr      (1'b0),
         .assign_dynamic_addr_valid(1'b0),
         .assign_dynamic_addr     (7'h00),

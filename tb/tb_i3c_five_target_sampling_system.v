@@ -50,6 +50,8 @@ module tb_i3c_five_target_sampling_system;
     wire scl_line;
     wire sda_line;
 
+    wire [TARGET_COUNT-1:0] target_sda_oe;
+
     reg  [TARGET_COUNT-1:0] assign_dynamic_addr_valid;
     reg  [6:0] assign_dynamic_addr [0:TARGET_COUNT-1];
     reg  [8*MAX_SERVICE_BYTES-1:0] read_data [0:TARGET_COUNT-1];
@@ -60,10 +62,9 @@ module tb_i3c_five_target_sampling_system;
     integer service_round;
 
     pullup (scl_line);
-    pullup (sda_line);
 
     assign scl_line = scl_oe ? scl_o : 1'bz;
-    assign sda_line = sda_oe ? sda_o : 1'bz;
+    assign sda_line = ~((sda_oe & ~sda_o) | (|target_sda_oe));
 
     i3c_ctrl_top #(
         .MAX_ENDPOINTS(5),
@@ -165,6 +166,7 @@ module tb_i3c_five_target_sampling_system;
                 .rst_n                   (rst_n),
                 .scl                     (scl_line),
                 .sda                     (sda_line),
+                .sda_oe                  (target_sda_oe[gi]),
                 .clear_dynamic_addr      (1'b0),
                 .assign_dynamic_addr_valid(assign_dynamic_addr_valid[gi]),
                 .assign_dynamic_addr     (assign_dynamic_addr[gi]),
