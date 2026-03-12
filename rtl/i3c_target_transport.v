@@ -3,6 +3,7 @@
 module i3c_target_transport #(
     parameter integer MAX_READ_BYTES = 4
 ) (
+    input  wire       clk,
     input  wire       rst_n,
     input  wire       scl,
     input  wire       sda,
@@ -49,12 +50,25 @@ module i3c_target_transport #(
 
     assign sda_drive_en = sda_drive_low;
 
-    // Phase 1+ hooks:
-    // - DAA logic will own dynamic address state rather than this fixed TARGET_ADDR.
-    // - CCC decode will extend the write path beyond simple payload capture.
-    // - IBI logic will arbitrate when this target may request bus ownership.
-    // - Recovery logic will reset or gate transport behavior after local/system faults.
-    always @(negedge sda or negedge rst_n) begin
+    // Edge detection on SCL and SDA
+    reg scl_d, sda_d;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            scl_d <= 1'b1;
+            sda_d <= 1'b1;
+        end else begin
+            scl_d <= scl;
+            sda_d <= sda;
+        end
+    end
+    wire scl_rising  = ~scl_d &  scl;
+    wire scl_falling =  scl_d & ~scl;
+    wire sda_falling =  sda_d & ~sda;
+    wire sda_rising  = ~sda_d &  sda;
+
+    // Single synchronous state machine
+    // Priority: reset > START (sda_falling) > STOP (sda_rising) > SCL edges
+    always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             phase         <= P_IDLE;
             bit_pos       <= 4'd0;
@@ -68,157 +82,129 @@ module i3c_target_transport #(
             write_data    <= 8'h00;
             write_valid   <= 1'b0;
             read_valid    <= 1'b0;
-        end else if (scl === 1'b1) begin
-            phase         <= suppress ? P_IGNORE : P_ADDR;
-            bit_pos       <= 4'd0;
-            read_byte_idx <= 8'd0;
-            rx_shift      <= 8'h00;
-            sda_drive_low <= 1'b0;
-            ack_pending   <= 1'b0;
-            addr_match    <= 1'b0;
-            rw_latched    <= 1'b0;
-            selected      <= 1'b0;
-            write_valid   <= 1'b0;
-            read_valid    <= 1'b0;
-        end
-    end
-
-    always @(posedge sda or negedge rst_n) begin
-        if (!rst_n) begin
-            phase         <= P_IDLE;
-            bit_pos       <= 4'd0;
-            read_byte_idx <= 8'd0;
-            sda_drive_low <= 1'b0;
-            ack_pending   <= 1'b0;
-            selected      <= 1'b0;
-            write_valid   <= 1'b0;
-            read_valid    <= 1'b0;
-        end else if (scl === 1'b1) begin
-            phase         <= P_IDLE;
-            bit_pos       <= 4'd0;
-            sda_drive_low <= 1'b0;
-            ack_pending   <= 1'b0;
-            selected      <= 1'b0;
-        end
-    end
-
-    always @(negedge scl or negedge rst_n) begin
-        if (!rst_n) begin
-            sda_drive_low <= 1'b0;
-        end else if (suppress) begin
-            sda_drive_low <= 1'b0;
-        end else if (ack_pending && (phase == P_ADDR || phase == P_WRITE) && (bit_pos == 4'd8)) begin
-            sda_drive_low <= addr_match;
-        end else if (phase == P_READ && bit_pos < 4'd8) begin
-            sda_drive_low <= ~current_read_byte[7 - bit_pos];
         end else begin
-            sda_drive_low <= 1'b0;
-        end
-    end
-
-    always @(posedge scl or negedge rst_n) begin
-        if (!rst_n) begin
-            phase       <= P_IDLE;
-            bit_pos     <= 4'd0;
-            read_byte_idx <= 8'd0;
-            rx_shift    <= 8'h00;
-            ack_pending <= 1'b0;
-            addr_match  <= 1'b0;
-            rw_latched  <= 1'b0;
-            selected    <= 1'b0;
-            write_data  <= 8'h00;
-            write_valid <= 1'b0;
-            read_valid  <= 1'b0;
-        end else begin
+            // Clear single-cycle pulses every cycle
             write_valid <= 1'b0;
             read_valid  <= 1'b0;
 
-            if (suppress) begin
-                phase       <= P_IGNORE;
-                bit_pos     <= 4'd0;
+            if (sda_falling && scl) begin
+                // START condition — highest priority
+                phase         <= suppress ? P_IGNORE : P_ADDR;
+                bit_pos       <= 4'd0;
                 read_byte_idx <= 8'd0;
-                ack_pending <= 1'b0;
-                addr_match  <= 1'b0;
-                rw_latched  <= 1'b0;
-                selected    <= 1'b0;
-            end else begin
-                case (phase)
-                    P_ADDR: begin
-                        if (bit_pos < 4'd8) begin
-                            rx_shift <= {rx_shift[6:0], sda};
-                            if (bit_pos == 4'd7) begin
-                                addr_match  <= (({rx_shift[6:0], sda} & 8'hFE) == {target_addr, 1'b0});
-                                rw_latched  <= sda;
-                                ack_pending <= 1'b1;
-                                bit_pos     <= 4'd8;
-                            end else begin
-                                bit_pos <= bit_pos + 1'b1;
-                            end
-                        end else begin
-                            ack_pending <= 1'b0;
-                            bit_pos     <= 4'd0;
-                            selected    <= addr_match;
-                            if (addr_match) begin
-                                if (rw_latched) begin
-                                    read_valid <= 1'b1;
+                rx_shift      <= 8'h00;
+                sda_drive_low <= 1'b0;
+                ack_pending   <= 1'b0;
+                addr_match    <= 1'b0;
+                rw_latched    <= 1'b0;
+                selected      <= 1'b0;
+            end else if (sda_rising && scl) begin
+                // STOP condition
+                phase         <= P_IDLE;
+                bit_pos       <= 4'd0;
+                sda_drive_low <= 1'b0;
+                ack_pending   <= 1'b0;
+                selected      <= 1'b0;
+            end else if (scl_falling) begin
+                // Drive SDA for ACK / read data on falling SCL edge
+                if (suppress) begin
+                    sda_drive_low <= 1'b0;
+                end else if (ack_pending && (phase == P_ADDR || phase == P_WRITE) && (bit_pos == 4'd8)) begin
+                    sda_drive_low <= addr_match;
+                end else if (phase == P_READ && bit_pos < 4'd8) begin
+                    sda_drive_low <= ~current_read_byte[7 - bit_pos];
+                end else begin
+                    sda_drive_low <= 1'b0;
+                end
+            end else if (scl_rising) begin
+                // Sample data / advance state machine on rising SCL edge
+                if (suppress) begin
+                    phase         <= P_IGNORE;
+                    bit_pos       <= 4'd0;
+                    read_byte_idx <= 8'd0;
+                    ack_pending   <= 1'b0;
+                    addr_match    <= 1'b0;
+                    rw_latched    <= 1'b0;
+                    selected      <= 1'b0;
+                end else begin
+                    case (phase)
+                        P_ADDR: begin
+                            if (bit_pos < 4'd8) begin
+                                rx_shift <= {rx_shift[6:0], sda};
+                                if (bit_pos == 4'd7) begin
+                                    addr_match  <= (({rx_shift[6:0], sda} & 8'hFE) == {target_addr, 1'b0});
+                                    rw_latched  <= sda;
+                                    ack_pending <= 1'b1;
+                                    bit_pos     <= 4'd8;
+                                end else begin
+                                    bit_pos <= bit_pos + 1'b1;
                                 end
-                                read_byte_idx <= 8'd0;
-                                phase <= rw_latched ? P_READ : P_WRITE;
                             end else begin
-                                phase <= P_IGNORE;
+                                ack_pending <= 1'b0;
+                                bit_pos     <= 4'd0;
+                                selected    <= addr_match;
+                                if (addr_match) begin
+                                    if (rw_latched) begin
+                                        read_valid <= 1'b1;
+                                    end
+                                    read_byte_idx <= 8'd0;
+                                    phase <= rw_latched ? P_READ : P_WRITE;
+                                end else begin
+                                    phase <= P_IGNORE;
+                                end
                             end
                         end
-                    end
 
-                    P_WRITE: begin
-                        if (bit_pos < 4'd8) begin
-                            rx_shift <= {rx_shift[6:0], sda};
-                            if (bit_pos == 4'd7) begin
-                                write_data  <= {rx_shift[6:0], sda};
-                                write_valid <= 1'b1;
-                                ack_pending <= 1'b1;
-                                bit_pos     <= 4'd8;
+                        P_WRITE: begin
+                            if (bit_pos < 4'd8) begin
+                                rx_shift <= {rx_shift[6:0], sda};
+                                if (bit_pos == 4'd7) begin
+                                    write_data  <= {rx_shift[6:0], sda};
+                                    write_valid <= 1'b1;
+                                    ack_pending <= 1'b1;
+                                    bit_pos     <= 4'd8;
+                                end else begin
+                                    bit_pos <= bit_pos + 1'b1;
+                                end
                             end else begin
-                                bit_pos <= bit_pos + 1'b1;
+                                ack_pending <= 1'b0;
+                                bit_pos     <= 4'd0;
+                                phase       <= P_IGNORE;
                             end
-                        end else begin
-                            ack_pending <= 1'b0;
-                            bit_pos     <= 4'd0;
-                            phase       <= P_IGNORE;
                         end
-                    end
 
-                    P_READ: begin
-                        if (bit_pos < 4'd8) begin
-                            if (bit_pos == 4'd7) begin
+                        P_READ: begin
+                            if (bit_pos < 4'd8) begin
+                                if (bit_pos == 4'd7) begin
+                                    bit_pos <= 4'd0;
+                                    phase   <= P_READ_ACK;
+                                end else begin
+                                    bit_pos <= bit_pos + 1'b1;
+                                end
+                            end else begin
                                 bit_pos <= 4'd0;
                                 phase   <= P_READ_ACK;
-                            end else begin
-                                bit_pos <= bit_pos + 1'b1;
                             end
-                        end else begin
-                            bit_pos <= 4'd0;
-                            phase   <= P_READ_ACK;
                         end
-                    end
 
-                    P_READ_ACK: begin
-                        if (sda == 1'b0) begin
-                            if ((read_byte_idx + 1'b1) < MAX_READ_BYTES) begin
-                                read_byte_idx <= read_byte_idx + 1'b1;
-                                bit_pos       <= 4'd0;
-                                phase         <= P_READ;
+                        P_READ_ACK: begin
+                            if (sda == 1'b0) begin
+                                if ((read_byte_idx + 1'b1) < MAX_READ_BYTES) begin
+                                    read_byte_idx <= read_byte_idx + 1'b1;
+                                    bit_pos       <= 4'd0;
+                                    phase         <= P_READ;
+                                end else begin
+                                    phase <= P_IGNORE;
+                                end
                             end else begin
                                 phase <= P_IGNORE;
                             end
-                        end else begin
-                            phase <= P_IGNORE;
                         end
-                    end
 
-                    default: begin
-                    end
-                endcase
+                        default: begin
+                        end
+                    endcase
+                end
             end
         end
     end

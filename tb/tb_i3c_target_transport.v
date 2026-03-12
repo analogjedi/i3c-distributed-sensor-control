@@ -66,6 +66,7 @@ module tb_i3c_target_transport;
     );
 
     i3c_target_transport tgt (
+        .clk        (clk),
         .rst_n      (rst_n),
         .scl        (scl_line),
         .sda        (sda_line),

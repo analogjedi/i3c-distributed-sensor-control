@@ -73,6 +73,7 @@ module i3c_target_top #(
     i3c_target_transport #(
         .MAX_READ_BYTES(MAX_READ_BYTES)
     ) u_target_transport (
+        .clk         (clk),
         .rst_n       (rst_n),
         .scl         (scl),
         .sda         (sda),
@@ -86,10 +87,10 @@ module i3c_target_top #(
         .target_addr (active_addr)
     );
 
-    always @(posedge write_valid or negedge rst_n) begin
+    always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             register_selector_r <= 8'h00;
-        end else begin
+        end else if (write_valid) begin
             register_selector_r <= write_data;
         end
     end
@@ -99,6 +100,7 @@ module i3c_target_top #(
         .TARGET_BCR (TARGET_BCR),
         .TARGET_DCR (TARGET_DCR)
     ) u_target_ccc (
+        .clk              (clk),
         .rst_n            (rst_n),
         .scl              (scl),
         .sda              (sda),
