@@ -73,6 +73,8 @@ module tb_i3c_target_transport;
         .sda_drive_en(target_sda_drive_en),
         .suppress   (1'b0),
         .target_addr(7'h2A),
+        .alt_addr_valid(1'b0),
+        .alt_addr   (7'h00),
         .read_data  ({24'h000000, target_read_data}),
         .write_data (target_write_data),
         .write_valid(target_write_valid),

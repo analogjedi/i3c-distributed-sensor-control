@@ -11,6 +11,8 @@ module i3c_target_transport #(
 
     input  wire       suppress,
     input  wire [6:0] target_addr,
+    input  wire       alt_addr_valid,
+    input  wire [6:0] alt_addr,
     input  wire [8*MAX_READ_BYTES-1:0] read_data,
     output reg  [7:0] write_data,
     output reg        write_valid,
@@ -132,7 +134,9 @@ module i3c_target_transport #(
                             if (bit_pos < 4'd8) begin
                                 rx_shift <= {rx_shift[6:0], sda};
                                 if (bit_pos == 4'd7) begin
-                                    addr_match  <= (({rx_shift[6:0], sda} & 8'hFE) == {target_addr, 1'b0});
+                                    addr_match  <= (({rx_shift[6:0], sda} & 8'hFE) == {target_addr, 1'b0}) ||
+                                                   (alt_addr_valid &&
+                                                    (({rx_shift[6:0], sda} & 8'hFE) == {alt_addr, 1'b0}));
                                     rw_latched  <= sda;
                                     ack_pending <= 1'b1;
                                     bit_pos     <= 4'd8;

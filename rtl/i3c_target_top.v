@@ -5,7 +5,12 @@ module i3c_target_top #(
     parameter [6:0]  STATIC_ADDR    = 7'h2A,
     parameter [47:0] PROVISIONAL_ID = 48'h1234_5678_9ABC,
     parameter [7:0]  TARGET_BCR     = 8'h01,
-    parameter [7:0]  TARGET_DCR     = 8'h5A
+    parameter [7:0]  TARGET_DCR     = 8'h5A,
+    parameter [15:0] TARGET_MAX_WRITE_LEN = 16'h0010,
+    parameter [15:0] TARGET_MAX_READ_LEN  = 16'h0010,
+    parameter [7:0]  TARGET_IBI_DATA_LEN  = 8'h00,
+    parameter [15:0] TARGET_MXDS          = 16'h0860,
+    parameter [31:0] TARGET_CAPS          = 32'h0000_0000
 ) (
     input  wire       clk,
     input  wire       rst_n,
@@ -29,6 +34,12 @@ module i3c_target_top #(
     output wire [7:0]  event_enable_mask,
     output wire [7:0]  rstact_action,
     output wire [15:0] status_word,
+    output wire [1:0]  activity_state,
+    output wire        group_addr_valid,
+    output wire [6:0]  group_addr,
+    output wire [15:0] max_write_len,
+    output wire [15:0] max_read_len,
+    output wire [7:0]  ibi_data_len,
     output wire [7:0]  last_ccc
 );
 
@@ -36,6 +47,8 @@ module i3c_target_top #(
     wire ccc_setaasa_pulse;
     wire ccc_setdasa_valid;
     wire [6:0] ccc_setdasa_addr;
+    wire ccc_setnewda_valid;
+    wire [6:0] ccc_setnewda_addr;
     wire ccc_entdaa_assign_valid;
     wire [6:0] ccc_entdaa_assign_addr;
     wire ccc_transport_holdoff;
@@ -51,9 +64,11 @@ module i3c_target_top #(
 
     assign target_assign_dynamic_addr_valid = assign_dynamic_addr_valid |
                                               ccc_setdasa_valid |
+                                              ccc_setnewda_valid |
                                               ccc_entdaa_assign_valid;
     assign target_assign_dynamic_addr = ccc_entdaa_assign_valid ? ccc_entdaa_assign_addr :
-                                        (ccc_setdasa_valid ? ccc_setdasa_addr : assign_dynamic_addr);
+                                        (ccc_setnewda_valid ? ccc_setnewda_addr :
+                                        (ccc_setdasa_valid ? ccc_setdasa_addr : assign_dynamic_addr));
 
     i3c_target_daa #(
         .STATIC_ADDR(STATIC_ADDR),
@@ -80,6 +95,8 @@ module i3c_target_top #(
         .sda_drive_en(transport_sda_drive_en),
         .suppress    (ccc_transport_holdoff),
         .read_data   (read_data),
+        .alt_addr_valid(group_addr_valid),
+        .alt_addr    (group_addr),
         .write_data  (write_data),
         .write_valid (write_valid),
         .read_valid  (read_valid),
@@ -98,7 +115,12 @@ module i3c_target_top #(
     i3c_target_ccc #(
         .STATIC_ADDR(STATIC_ADDR),
         .TARGET_BCR (TARGET_BCR),
-        .TARGET_DCR (TARGET_DCR)
+        .TARGET_DCR (TARGET_DCR),
+        .TARGET_MAX_WRITE_LEN(TARGET_MAX_WRITE_LEN),
+        .TARGET_MAX_READ_LEN (TARGET_MAX_READ_LEN),
+        .TARGET_IBI_DATA_LEN (TARGET_IBI_DATA_LEN),
+        .TARGET_MXDS         (TARGET_MXDS),
+        .TARGET_CAPS         (TARGET_CAPS)
     ) u_target_ccc (
         .clk              (clk),
         .rst_n            (rst_n),
@@ -112,12 +134,20 @@ module i3c_target_top #(
         .setaasa_pulse    (ccc_setaasa_pulse),
         .setdasa_valid    (ccc_setdasa_valid),
         .setdasa_addr     (ccc_setdasa_addr),
+        .setnewda_valid   (ccc_setnewda_valid),
+        .setnewda_addr    (ccc_setnewda_addr),
         .entdaa_assign_valid(ccc_entdaa_assign_valid),
         .entdaa_assign_addr(ccc_entdaa_assign_addr),
         .transport_holdoff(ccc_transport_holdoff),
         .event_enable_mask(event_enable_mask),
         .rstact_action   (rstact_action),
         .status_word     (status_word),
+        .activity_state  (activity_state),
+        .group_addr_valid(group_addr_valid),
+        .group_addr      (group_addr),
+        .max_write_len   (max_write_len),
+        .max_read_len    (max_read_len),
+        .ibi_data_len    (ibi_data_len),
         .ccc_seen         (ccc_seen),
         .last_ccc         (last_ccc)
     );

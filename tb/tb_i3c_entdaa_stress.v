@@ -119,12 +119,18 @@ module tb_i3c_entdaa_stress;
     wire [7:0]  last_ccc_3;
     wire [7:0]  last_ccc_4;
     wire [7:0]  last_ccc_5;
+    wire entdaa_bus_active = entdaa_busy || entdaa_cmd_valid;
+    wire rw_bus_active     = !entdaa_bus_active && (rw_busy || rw_cmd_valid);
 
     pullup (scl_line);
 
-    assign scl_line = entdaa_scl_oe ? entdaa_scl_o : 1'bz;
-    assign scl_line = rw_scl_oe     ? rw_scl_o     : 1'bz;
-    assign sda_line = ~((entdaa_sda_oe & ~entdaa_sda_o) | (rw_sda_oe & ~rw_sda_o) | target0_sda_oe | target1_sda_oe | target2_sda_oe | target3_sda_oe | target4_sda_oe | target5_sda_oe);
+    assign scl_line = entdaa_bus_active ? (entdaa_scl_oe ? entdaa_scl_o : 1'bz) :
+                      rw_bus_active     ? (rw_scl_oe     ? rw_scl_o     : 1'bz) :
+                                          1'bz;
+    assign sda_line = ~(((entdaa_bus_active ? (entdaa_sda_oe & ~entdaa_sda_o) : 1'b0) |
+                         (rw_bus_active     ? (rw_sda_oe     & ~rw_sda_o)     : 1'b0)) |
+                        target0_sda_oe | target1_sda_oe | target2_sda_oe |
+                        target3_sda_oe | target4_sda_oe | target5_sda_oe);
 
     i3c_ctrl_entdaa #(
         .CLK_FREQ_HZ(100_000_000),

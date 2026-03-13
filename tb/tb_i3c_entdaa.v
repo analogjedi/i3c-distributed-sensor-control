@@ -65,12 +65,17 @@ module tb_i3c_entdaa;
     wire       dynamic_addr_valid;
     wire [47:0] provisional_id;
     wire [7:0] last_ccc;
+    wire entdaa_bus_active = entdaa_busy || entdaa_cmd_valid;
+    wire rw_bus_active     = !entdaa_bus_active && (rw_busy || rw_cmd_valid);
 
     pullup (scl_line);
 
-    assign scl_line = entdaa_scl_oe ? entdaa_scl_o : 1'bz;
-    assign scl_line = rw_scl_oe     ? rw_scl_o     : 1'bz;
-    assign sda_line = ~((entdaa_sda_oe & ~entdaa_sda_o) | (rw_sda_oe & ~rw_sda_o) | target_sda_oe);
+    assign scl_line = entdaa_bus_active ? (entdaa_scl_oe ? entdaa_scl_o : 1'bz) :
+                      rw_bus_active     ? (rw_scl_oe     ? rw_scl_o     : 1'bz) :
+                                          1'bz;
+    assign sda_line = ~(((entdaa_bus_active ? (entdaa_sda_oe & ~entdaa_sda_o) : 1'b0) |
+                         (rw_bus_active     ? (rw_sda_oe     & ~rw_sda_o)     : 1'b0)) |
+                        target_sda_oe);
 
     i3c_ctrl_entdaa #(
         .CLK_FREQ_HZ(100_000_000),
