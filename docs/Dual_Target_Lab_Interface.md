@@ -20,6 +20,11 @@ The lab image is intentionally narrower than the five-target unified demo:
 
 This is meant for controller/host integration work, not for showing off how many synthetic targets fit on a board.
 
+The current lab dashboard intentionally separates:
+
+- `Operations`: live payload polling, decoded target status, and target LED/output control
+- `CCC Lab`: safe read-only direct CCC inspection through the real controller path
+
 ## Target Register Map
 
 Each target exposes the same register map.
@@ -143,6 +148,8 @@ FastAPI backend:
 Endpoints:
 
 - `GET /api/dashboard`
+- `GET /api/ccc/catalog`
+- `POST /api/ccc/execute`
 - `POST /api/start`
 - `GET /api/status`
 - `GET /api/targets/{target}`
@@ -156,11 +163,17 @@ Next.js frontend:
 
 The frontend is intentionally small:
 
-- start the demo
-- poll a combined dashboard view
-- read target A/B summaries and decoded register fields
-- toggle each target LED through the real controller-to-target write path
-- issue ad hoc register reads and writes against either target
+- `Operations` tab:
+  - start the demo
+  - poll a combined dashboard view
+  - read target A/B summaries and decoded register fields
+  - toggle each target LED through the real controller-to-target write path
+  - issue ad hoc register reads and writes against either target
+- `CCC Lab` tab:
+  - run safe read-only direct CCCs against target A or B
+  - decode `GETPID`, `GETBCR`, `GETDCR`, `GETSTATUS`, `GETMWL`, `GETMRL`, `GETMXDS`, and `GETCAPS`
+  - show raw response bytes plus decoded results
+  - keep recent CCC history visible without disturbing the live operations view
 
 ## CMOD LED Mapping (Dual-Target Lab Demo)
 

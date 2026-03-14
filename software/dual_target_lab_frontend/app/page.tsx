@@ -67,6 +67,29 @@ type RegisterToolState = {
   writeResult: string;
 };
 
+type CccCommand = {
+  id: string;
+  label: string;
+  mode: "direct" | "broadcast";
+  code: number;
+  target_required: boolean;
+  arg_required: boolean;
+  arg_default: number;
+  arg_label?: string;
+  description: string;
+};
+
+type CccResult = {
+  command: CccCommand;
+  target: number | null;
+  arg: number;
+  arg_hex: string;
+  response_len: number;
+  response_hex: string;
+  response_bytes: number[];
+  decoded: Record<string, string | number>;
+};
+
 const API = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 const TARGET_NAMES = ["Target A", "Target B"];
 
@@ -92,6 +115,13 @@ export default function Page() {
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [polling, setPolling] = useState(true);
   const [pollIntervalMs, setPollIntervalMs] = useState(2000);
+  const [activeTab, setActiveTab] = useState<"operations" | "ccc">("operations");
+  const [cccCatalog, setCccCatalog] = useState<CccCommand[]>([]);
+  const [cccCommandId, setCccCommandId] = useState("");
+  const [cccTarget, setCccTarget] = useState<0 | 1>(0);
+  const [cccArg, setCccArg] = useState("0x00");
+  const [cccResult, setCccResult] = useState<CccResult | null>(null);
+  const [cccHistory, setCccHistory] = useState<CccResult[]>([]);
 
   async function fetchJson(path: string, init?: RequestInit) {
     const response = await fetch(`${API}${path}`, {
@@ -112,6 +142,7 @@ export default function Page() {
       }
       throw new Error(detail || `Request failed: ${response.status}`);
     }
+
     return response.json();
   }
 
@@ -120,6 +151,16 @@ export default function Page() {
     setDashboard(next);
     setLastUpdated(new Date().toLocaleTimeString());
     setError(null);
+  }
+
+  async function loadCatalog() {
+    const next = await fetchJson("/api/ccc/catalog");
+    const commands = next.commands as CccCommand[];
+    setCccCatalog(commands);
+    if (!cccCommandId && commands.length > 0) {
+      setCccCommandId(commands[0].id);
+      setCccArg(`0x${commands[0].arg_default.toString(16).toUpperCase().padStart(2, "0")}`);
+    }
   }
 
   async function runAction(action: () => Promise<void>) {
@@ -188,6 +229,26 @@ export default function Page() {
     });
   }
 
+  async function executeCcc() {
+    const command = cccCatalog.find((item) => item.id === cccCommandId);
+    if (!command) {
+      return;
+    }
+    await runAction(async () => {
+      const result = await fetchJson("/api/ccc/execute", {
+        method: "POST",
+        body: JSON.stringify({
+          command_id: command.id,
+          target: command.target_required ? cccTarget : null,
+          arg: command.arg_required ? Number(cccArg) : command.arg_default,
+        }),
+      });
+      setCccResult(result);
+      setCccHistory((prev) => [result, ...prev].slice(0, 8));
+      await refresh();
+    });
+  }
+
   function updateTool(target: number, patch: Partial<RegisterToolState>) {
     setToolState((prev) => ({
       ...prev,
@@ -199,15 +260,29 @@ export default function Page() {
     refresh().catch((nextError) => {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
     });
+    loadCatalog().catch((nextError) => {
+      setError(nextError instanceof Error ? nextError.message : String(nextError));
+    });
   }, []);
 
   useEffect(() => {
-    if (!polling) return;
+    if (!polling) {
+      return;
+    }
     const id = window.setInterval(() => {
       refresh().catch(() => undefined);
     }, pollIntervalMs);
     return () => window.clearInterval(id);
   }, [polling, pollIntervalMs]);
+
+  useEffect(() => {
+    const command = cccCatalog.find((item) => item.id === cccCommandId);
+    if (command) {
+      setCccArg(`0x${command.arg_default.toString(16).toUpperCase().padStart(2, "0")}`);
+    }
+  }, [cccCommandId, cccCatalog]);
+
+  const selectedCommand = cccCatalog.find((item) => item.id === cccCommandId) ?? null;
 
   return (
     <main style={pageStyle}>
@@ -216,9 +291,9 @@ export default function Page() {
           <p style={eyebrowStyle}>CMOD S7 / I3C / Dual Target Lab</p>
           <h1 style={titleStyle}>Controller Dashboard</h1>
           <p style={ledeStyle}>
-            FastAPI is the bridge to the FPGA UART. This page is the operator surface: boot the
-            demo, inspect both targets, read payload windows, and toggle each target output LED
-            through the real controller-to-target path.
+            One tab runs the operational demo. The other tab is a CCC lab so you can exercise
+            controller-issued read-only management commands without stuffing protocol experiments
+            into the same surface as the live payload view.
           </p>
         </div>
         <div style={heroActionsStyle}>
@@ -240,7 +315,7 @@ export default function Page() {
             onClick={() => setPolling((p) => !p)}
             style={buttonStyle(polling ? "#c53030" : "#2f855a", "#f0f4f8")}
           >
-            {polling ? "⏸ Pause Polling" : "▶ Resume Polling"}
+            {polling ? "Pause Polling" : "Resume Polling"}
           </button>
           <div style={sliderWrapStyle}>
             <label style={sliderLabelStyle}>
@@ -254,11 +329,12 @@ export default function Page() {
               max={2000}
               step={100}
               value={pollIntervalMs}
-              onChange={(e) => setPollIntervalMs(Number(e.target.value))}
+              onChange={(event) => setPollIntervalMs(Number(event.target.value))}
               style={sliderStyle}
             />
             <div style={sliderTicksStyle}>
-              <span>0.1s</span><span>2s</span>
+              <span>0.1s</span>
+              <span>2.0s</span>
             </div>
           </div>
         </div>
@@ -293,45 +369,236 @@ export default function Page() {
 
       {error ? <section style={errorStyle}>{error}</section> : null}
 
-      <section style={overviewGridStyle}>
-        <OverviewCard
-          title="Controller Status"
-          items={[
-            ["Verified bitmap", bitmapString(dashboard?.status.verified_bitmap)],
-            ["Sample-valid bitmap", bitmapString(dashboard?.status.sample_valid_bitmap)],
-            ["Target LED bitmap", bitmapString(dashboard?.status.target_led_state)],
-            ["Recovery active", yesNo(dashboard?.status.recovery_active)],
-          ]}
-        />
-        <OverviewCard
-          title="Dual-Target Board LEDs"
-          items={[
-            ["LED0", "Target A output state"],
-            ["LED1", "Target B output state"],
-            ["LED2", "Target A sample-valid"],
-            ["LED3", "Target B sample-valid"],
-            ["RGB blue", "Recovery active"],
-            ["RGB green", "Boot done"],
-            ["RGB red", "Boot or capture error"],
-          ]}
-        />
+      <section style={tabRowStyle}>
+        <button
+          onClick={() => setActiveTab("operations")}
+          style={tabButtonStyle(activeTab === "operations")}
+        >
+          Operations
+        </button>
+        <button
+          onClick={() => setActiveTab("ccc")}
+          style={tabButtonStyle(activeTab === "ccc")}
+        >
+          CCC Lab
+        </button>
       </section>
 
-      <section style={targetGridStyle}>
-        {(dashboard?.targets ?? []).map((target) => (
-          <TargetPanel
-            key={target.target}
-            target={target}
-            toolState={toolState[target.target]}
-            busy={busy}
-            onSetLed={setLed}
-            onRead={() => readRegisters(target.target)}
-            onWrite={() => writeRegister(target.target)}
-            onToolChange={(patch) => updateTool(target.target, patch)}
-          />
-        ))}
-      </section>
+      {activeTab === "operations" ? (
+        <>
+          <section style={overviewGridStyle}>
+            <OverviewCard
+              title="Controller Status"
+              items={[
+                ["Verified bitmap", bitmapString(dashboard?.status.verified_bitmap)],
+                ["Sample-valid bitmap", bitmapString(dashboard?.status.sample_valid_bitmap)],
+                ["Target LED bitmap", bitmapString(dashboard?.status.target_led_state)],
+                ["Recovery active", yesNo(dashboard?.status.recovery_active)],
+              ]}
+            />
+            <OverviewCard
+              title="Dual-Target Board LEDs"
+              items={[
+                ["LED0", "Target A output state"],
+                ["LED1", "Target B output state"],
+                ["LED2", "Target A sample-valid"],
+                ["LED3", "Target B sample-valid"],
+                ["RGB blue", "Recovery active"],
+                ["RGB green", "Boot done"],
+                ["RGB red", "Boot or capture error"],
+              ]}
+            />
+          </section>
+
+          <section style={targetGridStyle}>
+            {(dashboard?.targets ?? []).map((target) => (
+              <TargetPanel
+                key={target.target}
+                target={target}
+                toolState={toolState[target.target]}
+                busy={busy}
+                onSetLed={setLed}
+                onRead={() => readRegisters(target.target)}
+                onWrite={() => writeRegister(target.target)}
+                onToolChange={(patch) => updateTool(target.target, patch)}
+              />
+            ))}
+          </section>
+        </>
+      ) : (
+        <CccLab
+          busy={busy}
+          commands={cccCatalog}
+          selectedCommand={selectedCommand}
+          selectedCommandId={cccCommandId}
+          selectedTarget={cccTarget}
+          argValue={cccArg}
+          result={cccResult}
+          history={cccHistory}
+          onCommandChange={setCccCommandId}
+          onTargetChange={(value) => setCccTarget(value as 0 | 1)}
+          onArgChange={setCccArg}
+          onExecute={() => void executeCcc()}
+        />
+      )}
     </main>
+  );
+}
+
+function CccLab({
+  busy,
+  commands,
+  selectedCommand,
+  selectedCommandId,
+  selectedTarget,
+  argValue,
+  result,
+  history,
+  onCommandChange,
+  onTargetChange,
+  onArgChange,
+  onExecute,
+}: {
+  busy: boolean;
+  commands: CccCommand[];
+  selectedCommand: CccCommand | null;
+  selectedCommandId: string;
+  selectedTarget: 0 | 1;
+  argValue: string;
+  result: CccResult | null;
+  history: CccResult[];
+  onCommandChange: (value: string) => void;
+  onTargetChange: (value: number) => void;
+  onArgChange: (value: string) => void;
+  onExecute: () => void;
+}) {
+  return (
+    <section style={cccGridStyle}>
+      <article style={panelStyle}>
+        <h2 style={panelTitleStyle}>CCC Command Runner</h2>
+        <p style={smallCopyStyle}>
+          This pane exercises safe read-only management CCCs through the real controller path. It
+          is intentionally biased toward identity, capability, and status commands instead of
+          address-destructive chaos.
+        </p>
+
+        <div style={formGridStyle}>
+          <label style={labelStyle}>
+            Command
+            <select
+              value={selectedCommandId}
+              onChange={(event) => onCommandChange(event.target.value)}
+              style={inputStyle}
+            >
+              {commands.map((command) => (
+                <option key={command.id} value={command.id}>
+                  {command.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={labelStyle}>
+            Mode
+            <input
+              readOnly
+              value={selectedCommand ? selectedCommand.mode : "n/a"}
+              style={inputStyle}
+            />
+          </label>
+
+          <label style={labelStyle}>
+            Target
+            <select
+              value={selectedTarget}
+              onChange={(event) => onTargetChange(Number(event.target.value))}
+              style={inputStyle}
+              disabled={!selectedCommand?.target_required}
+            >
+              <option value={0}>Target A</option>
+              <option value={1}>Target B</option>
+            </select>
+          </label>
+
+          <label style={labelStyle}>
+            {selectedCommand?.arg_label ?? "Argument"}
+            <input
+              value={argValue}
+              onChange={(event) => onArgChange(event.target.value)}
+              style={inputStyle}
+              disabled={!selectedCommand?.arg_required}
+            />
+          </label>
+        </div>
+
+        <div style={buttonRowStyle}>
+          <button onClick={onExecute} disabled={busy || !selectedCommand} style={buttonStyle("#1f4b99", "#eff6ff")}>
+            Execute CCC
+          </button>
+        </div>
+
+        {selectedCommand ? (
+          <div style={sectionBlockStyle}>
+            <h3 style={sectionTitleStyle}>Selected Command</h3>
+            <dl style={detailListStyle}>
+              <DetailRow label="Code" value={`0x${selectedCommand.code.toString(16).toUpperCase().padStart(2, "0")}`} />
+              <DetailRow label="Description" value={selectedCommand.description} />
+              <DetailRow label="Target required" value={selectedCommand.target_required ? "Yes" : "No"} />
+              <DetailRow label="Argument required" value={selectedCommand.arg_required ? "Yes" : "No"} />
+            </dl>
+          </div>
+        ) : null}
+      </article>
+
+      <article style={panelStyle}>
+        <h2 style={panelTitleStyle}>Result</h2>
+        {result ? (
+          <>
+            <dl style={detailListStyle}>
+              <DetailRow label="Command" value={result.command.label} />
+              <DetailRow label="Mode" value={result.command.mode} />
+              <DetailRow
+                label="Target"
+                value={result.target === null ? "Broadcast" : TARGET_NAMES[result.target]}
+              />
+              <DetailRow label="Argument" value={result.arg_hex} />
+              <DetailRow label="Response length" value={String(result.response_len)} />
+              <DetailRow label="Response hex" value={result.response_hex || "(none)"} />
+            </dl>
+            <div style={sectionBlockStyle}>
+              <h3 style={sectionTitleStyle}>Decoded</h3>
+              <pre style={resultStyle}>{JSON.stringify(result.decoded, null, 2)}</pre>
+            </div>
+          </>
+        ) : (
+          <p style={smallCopyStyle}>No CCC command executed yet.</p>
+        )}
+      </article>
+
+      <article style={panelStyle}>
+        <h2 style={panelTitleStyle}>Recent CCC History</h2>
+        {history.length === 0 ? (
+          <p style={smallCopyStyle}>No history yet.</p>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {history.map((entry, index) => (
+              <div key={`${entry.command.id}-${index}`} style={historyItemStyle}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" as const }}>
+                  <strong>{entry.command.label}</strong>
+                  <span style={monoStyle}>
+                    {entry.target === null ? "Broadcast" : TARGET_NAMES[entry.target]}
+                  </span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" as const }}>
+                  <span style={monoStyle}>arg {entry.arg_hex}</span>
+                  <span style={monoStyle}>{entry.response_hex || "(no data)"}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </article>
+    </section>
   );
 }
 
@@ -394,7 +661,7 @@ function TargetPanel({
             <code style={monoStyle}>{target.sample_payload}</code>
             <span style={{ ...monoStyle, color: "#f0b429" }}>
               fc[7:0]: {target.parsed_payload.channels[0] != null
-                ? `0x${extractFc8(target.parsed_payload.channels[0], target.target).toString(16).toUpperCase().padStart(2,"0")}`
+                ? `0x${extractFc8(target.parsed_payload.channels[0], target.target).toString(16).toUpperCase().padStart(2, "0")}`
                 : "n/a"}
             </span>
           </div>
@@ -497,9 +764,13 @@ function PayloadInfoButton({ target }: { target: TargetSummary }) {
   const offset = target.target << 8;
 
   useEffect(() => {
-    if (!open) return;
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    if (!open) {
+      return;
+    }
+    function handleClick(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -507,12 +778,10 @@ function PayloadInfoButton({ target }: { target: TargetSummary }) {
 
   return (
     <div ref={ref} style={{ position: "relative" as const, display: "inline-block" }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={infoBtnStyle}
-        title="Show payload math"
-      >ⓘ</button>
-      {open && fc8 != null && (
+      <button onClick={() => setOpen((value) => !value)} style={infoBtnStyle} title="Show payload math">
+        ⓘ
+      </button>
+      {open && fc8 != null ? (
         <div style={popoverStyle}>
           <p style={popoverTitleStyle}>Payload Formula — {target.name}</p>
           <table style={{ ...validationTableStyle, fontSize: 12 }}>
@@ -525,13 +794,13 @@ function PayloadInfoButton({ target }: { target: TargetSummary }) {
             </thead>
             <tbody>
               {[
-                ["fc[7:0]",   `Ch0 − 0x${(0x1000 + offset).toString(16).toUpperCase()}`,        `0x${fc8.toString(16).toUpperCase().padStart(2,"0")} (${fc8})`],
-                ["Ch 0",      `0x${(0x1000+offset).toString(16).toUpperCase()} + fc`,            String(0x1000 + offset + fc8)],
-                ["Ch 1",      `0x${(0x2000+offset).toString(16).toUpperCase()} + 3×fc`,          String(0x2000 + offset + 3*fc8)],
-                ["Ch 2",      `0x${(0x3000+offset).toString(16).toUpperCase()} + 5×fc`,          String(0x3000 + offset + 5*fc8)],
-                ["Ch 3",      `0x${(0x4000+offset).toString(16).toUpperCase()} + 7×fc`,          String(0x4000 + offset + 7*fc8)],
-                ["Temp",      `0x50 + ${target.target} + fc[3:0]`,                               String(0x50 + target.target + (fc8 & 0xF))],
-                ["Misc",      `{idx[2:0], fc[4:0]}`,                                             String(((target.target & 0x7) << 5) | (fc8 & 0x1F))],
+                ["fc[7:0]", `Ch0 − 0x${(0x1000 + offset).toString(16).toUpperCase()}`, `0x${fc8.toString(16).toUpperCase().padStart(2, "0")} (${fc8})`],
+                ["Ch 0", `0x${(0x1000 + offset).toString(16).toUpperCase()} + fc`, String(0x1000 + offset + fc8)],
+                ["Ch 1", `0x${(0x2000 + offset).toString(16).toUpperCase()} + 3×fc`, String(0x2000 + offset + 3 * fc8)],
+                ["Ch 2", `0x${(0x3000 + offset).toString(16).toUpperCase()} + 5×fc`, String(0x3000 + offset + 5 * fc8)],
+                ["Ch 3", `0x${(0x4000 + offset).toString(16).toUpperCase()} + 7×fc`, String(0x4000 + offset + 7 * fc8)],
+                ["Temp", `0x50 + ${target.target} + fc[3:0]`, String(0x50 + target.target + (fc8 & 0xF))],
+                ["Misc", `{idx[2:0], fc[4:0]}`, String(((target.target & 0x7) << 5) | (fc8 & 0x1F))],
               ].map(([field, formula, value]) => (
                 <tr key={field}>
                   <td style={{ ...tdStyle, fontWeight: 700 }}>{field}</td>
@@ -542,22 +811,22 @@ function PayloadInfoButton({ target }: { target: TargetSummary }) {
             </tbody>
           </table>
           <p style={{ margin: "10px 0 0", fontSize: 11, color: "#9fb3c8" }}>
-            TARGET_OFFSET = 0x{offset.toString(16).toUpperCase().padStart(4,"0")} (TARGET_INDEX={target.target})
+            TARGET_OFFSET = 0x{offset.toString(16).toUpperCase().padStart(4, "0")} (TARGET_INDEX={target.target})
           </p>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
 
 function extractFc8(ch0: number, targetIndex: number): number {
   const offset = targetIndex << 8;
-  return (ch0 - 0x1000 - offset) & 0xFF;
+  return (ch0 - 0x1000 - offset) & 0xff;
 }
 
 function computeExpected(targetIndex: number, fc8: number) {
-  const fc4 = fc8 & 0x0F;
-  const fc5 = fc8 & 0x1F;
+  const fc4 = fc8 & 0x0f;
+  const fc5 = fc8 & 0x1f;
   const offset = targetIndex << 8;
   return {
     ch0: 0x1000 + offset + fc8,
@@ -570,27 +839,22 @@ function computeExpected(targetIndex: number, fc8: number) {
 }
 
 function PayloadValidation({ target }: { target: TargetSummary }) {
-  const p = target.parsed_payload;
-  const ch0 = p.channels[0];
+  const payload = target.parsed_payload;
+  const ch0 = payload.channels[0];
 
   if (ch0 === undefined || ch0 === null) {
-    return (
-      <p style={{ color: "#9fb3c8", fontSize: 13, margin: "10px 0 0" }}>
-        No payload data yet.
-      </p>
-    );
+    return <p style={{ color: "#9fb3c8", fontSize: 13, margin: "10px 0 0" }}>No payload data yet.</p>;
   }
 
   const fc8 = extractFc8(ch0, target.target);
-  const exp = computeExpected(target.target, fc8);
-
+  const expected = computeExpected(target.target, fc8);
   const rows: Array<{ label: string; actual: number | null; expected: number; anchor?: boolean }> = [
-    { label: "Ch 0", actual: p.channels[0] ?? null, expected: exp.ch0, anchor: true },
-    { label: "Ch 1", actual: p.channels[1] ?? null, expected: exp.ch1 },
-    { label: "Ch 2", actual: p.channels[2] ?? null, expected: exp.ch2 },
-    { label: "Ch 3", actual: p.channels[3] ?? null, expected: exp.ch3 },
-    { label: "Temp", actual: p.temperature, expected: exp.temperature },
-    { label: "Misc", actual: p.misc, expected: exp.misc },
+    { label: "Ch 0", actual: payload.channels[0] ?? null, expected: expected.ch0, anchor: true },
+    { label: "Ch 1", actual: payload.channels[1] ?? null, expected: expected.ch1 },
+    { label: "Ch 2", actual: payload.channels[2] ?? null, expected: expected.ch2 },
+    { label: "Ch 3", actual: payload.channels[3] ?? null, expected: expected.ch3 },
+    { label: "Temp", actual: payload.temperature, expected: expected.temperature },
+    { label: "Misc", actual: payload.misc, expected: expected.misc },
   ];
 
   return (
@@ -605,15 +869,16 @@ function PayloadValidation({ target }: { target: TargetSummary }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ label, actual, expected, anchor }) => {
-            const match = actual !== null && actual === expected;
-            const rowTone = actual === null ? "neutral" : match ? "good" : "bad";
+          {rows.map(({ label, actual, expected: expectedValue, anchor }) => {
+            const match = actual !== null && actual === expectedValue;
+            const tone = actual === null ? "neutral" : match ? "good" : "bad";
             return (
-              <tr key={label} style={validationRowStyle(rowTone)}>
+              <tr key={label} style={validationRowStyle(tone)}>
                 <td style={tdStyle}>
-                  {label}{anchor ? <span style={{ color: "#9fb3c8", fontSize: 11 }}> (anchor)</span> : ""}
+                  {label}
+                  {anchor ? <span style={{ color: "#9fb3c8", fontSize: 11 }}> (anchor)</span> : null}
                 </td>
-                <td style={{ ...tdStyle, fontFamily: "monospace" }}>{expected}</td>
+                <td style={{ ...tdStyle, fontFamily: "monospace" }}>{expectedValue}</td>
                 <td style={{ ...tdStyle, fontFamily: "monospace" }}>{actual ?? "n/a"}</td>
                 <td style={{ ...tdStyle, fontSize: 16 }}>{actual === null ? "—" : match ? "✅" : "🔴"}</td>
               </tr>
@@ -625,13 +890,7 @@ function PayloadValidation({ target }: { target: TargetSummary }) {
   );
 }
 
-function OverviewCard({
-  title,
-  items,
-}: {
-  title: string;
-  items: Array<[string, string]>;
-}) {
+function OverviewCard({ title, items }: { title: string; items: Array<[string, string]> }) {
   return (
     <article style={panelStyle}>
       <h2 style={panelTitleStyle}>{title}</h2>
@@ -698,7 +957,7 @@ function hex8(value: number | undefined) {
   if (value === undefined) {
     return "n/a";
   }
-  return `0x${value.toString(16).padStart(2, "0").toUpperCase()}`;
+  return `0x${value.toString(16).toUpperCase().padStart(2, "0")}`;
 }
 
 function toneStyle(tone: "good" | "warn" | "bad" | "neutral") {
@@ -724,6 +983,13 @@ function buttonStyle(background: string, color: string) {
     cursor: "pointer",
     fontWeight: 700,
   } as const;
+}
+
+function tabButtonStyle(active: boolean) {
+  return {
+    ...buttonStyle(active ? "#f0b429" : "#243b53", active ? "#102a43" : "#f0f4f8"),
+    minWidth: 160,
+  };
 }
 
 const pageStyle = {
@@ -808,6 +1074,13 @@ const errorStyle = {
   padding: 14,
 };
 
+const tabRowStyle = {
+  display: "flex",
+  gap: 12,
+  marginTop: 24,
+  flexWrap: "wrap" as const,
+};
+
 const overviewGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
@@ -818,6 +1091,13 @@ const overviewGridStyle = {
 const targetGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+  gap: 18,
+  marginTop: 24,
+};
+
+const cccGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
   gap: 18,
   marginTop: 24,
 };
@@ -911,12 +1191,6 @@ const sectionTitleStyle = {
   fontSize: 18,
 };
 
-const channelGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-  gap: 12,
-};
-
 const buttonRowStyle = {
   display: "flex",
   gap: 12,
@@ -936,6 +1210,12 @@ const toolCardStyle = {
   padding: 14,
   display: "grid",
   gap: 10,
+};
+
+const formGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: 14,
 };
 
 const labelStyle = {
@@ -966,6 +1246,15 @@ const resultStyle = {
   color: "#d9e2ec",
 };
 
+const historyItemStyle = {
+  background: "rgba(16, 42, 67, 0.62)",
+  border: "1px solid rgba(148, 163, 184, 0.14)",
+  borderRadius: 14,
+  padding: 12,
+  display: "grid",
+  gap: 6,
+};
+
 const detailListStyle = {
   display: "grid",
   gridTemplateColumns: "max-content 1fr",
@@ -988,6 +1277,12 @@ const monoStyle = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   color: "#9fb3c8",
   fontSize: 12,
+};
+
+const smallCopyStyle = {
+  color: "#9fb3c8",
+  lineHeight: 1.6,
+  margin: "0 0 14px",
 };
 
 const infoBtnStyle = {
@@ -1078,10 +1373,11 @@ const sliderTicksStyle = {
 };
 
 function validationRowStyle(tone: "good" | "bad" | "neutral") {
-  const bg = tone === "good"
-    ? "rgba(47,133,90,0.12)"
-    : tone === "bad"
-    ? "rgba(197,48,48,0.14)"
-    : "transparent";
-  return { background: bg };
+  const background =
+    tone === "good"
+      ? "rgba(47,133,90,0.12)"
+      : tone === "bad"
+        ? "rgba(197,48,48,0.14)"
+        : "transparent";
+  return { background };
 }

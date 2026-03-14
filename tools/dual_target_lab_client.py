@@ -31,6 +31,8 @@ CMD_STATUS = 0x02
 CMD_SUMMARY = 0x10
 CMD_READ_REG = 0x11
 CMD_WRITE_REG = 0x12
+CMD_DIRECT_CCC = 0x20
+CMD_BROADCAST_CCC = 0x21
 
 
 @dataclasses.dataclass
@@ -129,6 +131,36 @@ class DualTargetLabClient:
         if not resp.payload:
             return value & 0xFF
         return resp.payload[0]
+
+    def direct_ccc(self, target: int, code: int, arg: int = 0) -> dict[str, Any]:
+        resp = self._exchange(CMD_DIRECT_CCC, target=target, arg0=code, arg1=arg)
+        self._require_ok(resp)
+        if len(resp.payload) < 3:
+            raise ProtocolError(f"Unexpected direct CCC payload length {len(resp.payload)}")
+        data_len = resp.payload[2]
+        data = resp.payload[3:3 + data_len]
+        return {
+            "cmd": resp.payload[0],
+            "code": resp.payload[1],
+            "arg": arg & 0xFF,
+            "length": data_len,
+            "hex": data.hex(),
+            "bytes": list(data),
+        }
+
+    def broadcast_ccc(self, code: int, arg: int = 0) -> dict[str, Any]:
+        resp = self._exchange(CMD_BROADCAST_CCC, target=0, arg0=code, arg1=arg)
+        self._require_ok(resp)
+        if len(resp.payload) < 3:
+            raise ProtocolError(f"Unexpected broadcast CCC payload length {len(resp.payload)}")
+        return {
+            "cmd": resp.payload[0],
+            "code": resp.payload[1],
+            "arg": arg & 0xFF,
+            "length": resp.payload[2],
+            "hex": "",
+            "bytes": [],
+        }
 
     @staticmethod
     def _require_ok(resp: Response) -> None:

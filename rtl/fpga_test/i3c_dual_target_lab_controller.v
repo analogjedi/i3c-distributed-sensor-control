@@ -37,6 +37,17 @@ module i3c_dual_target_lab_controller #(
     output reg  [7:0]                             host_rsp_len,
     output reg  [8*MAX_SERVICE_BYTES-1:0]         host_rsp_data,
 
+    input  wire                                   host_ccc_valid,
+    output wire                                   host_ccc_ready,
+    input  wire                                   host_ccc_direct,
+    input  wire                                   host_ccc_target,
+    input  wire [7:0]                             host_ccc_code,
+    input  wire [7:0]                             host_ccc_arg,
+    output reg                                    host_ccc_rsp_valid,
+    output reg                                    host_ccc_rsp_error,
+    output reg  [7:0]                             host_ccc_rsp_len,
+    output reg  [47:0]                            host_ccc_rsp_data,
+
     output reg                                    boot_done,
     output reg                                    boot_error,
     output reg                                    capture_error,
@@ -64,8 +75,17 @@ module i3c_dual_target_lab_controller #(
     localparam [7:0] CCC_GETBCR    = 8'h8E;
     localparam [7:0] CCC_GETDCR    = 8'h8F;
     localparam [7:0] CCC_GETSTATUS = 8'h90;
+    localparam [7:0] CCC_GETMWL    = 8'h8B;
+    localparam [7:0] CCC_GETMRL    = 8'h8C;
+    localparam [7:0] CCC_GETMXDS   = 8'h94;
+    localparam [7:0] CCC_GETCAPS   = 8'h95;
     localparam [7:0] CCC_SETDASA   = 8'h87;
     localparam [7:0] CCC_RSTACT    = 8'h9A;
+    localparam [7:0] CCC_ENEC_DIRECT = 8'h80;
+    localparam [7:0] CCC_DISEC_DIRECT = 8'h81;
+    localparam [7:0] CCC_ENEC_BCAST = 8'h00;
+    localparam [7:0] CCC_DISEC_BCAST = 8'h01;
+    localparam [6:0] CCC_ADDR = 7'h7E;
 
     localparam [5:0] ST_BOOT_SETDASA_REQ   = 6'd0;
     localparam [5:0] ST_BOOT_SETDASA_WAIT  = 6'd1;
@@ -102,6 +122,10 @@ module i3c_dual_target_lab_controller #(
     localparam [5:0] ST_RECOVER_RECHECK_REQ = 6'd32;
     localparam [5:0] ST_RECOVER_RECHECK_WAIT = 6'd33;
     localparam [5:0] ST_ERROR              = 6'd34;
+    localparam [5:0] ST_RUN_HOST_DCCC_REQ  = 6'd35;
+    localparam [5:0] ST_RUN_HOST_DCCC_WAIT = 6'd36;
+    localparam [5:0] ST_RUN_HOST_BCCC_REQ  = 6'd37;
+    localparam [5:0] ST_RUN_HOST_BCCC_WAIT = 6'd38;
 
     localparam [1:0] OP_NONE           = 2'd0;
     localparam [1:0] OP_SCHEDULE_READ  = 2'd1;
@@ -113,9 +137,13 @@ module i3c_dual_target_lab_controller #(
     reg [INDEX_W-1:0] sched_index;
     reg [INDEX_W-1:0] active_target;
     reg [INDEX_W-1:0] pending_host_target;
+    reg               pending_ccc_target;
+    reg               pending_ccc_direct;
     reg [7:0]         pending_host_reg_addr;
     reg [7:0]         pending_host_write_value;
     reg [7:0]         pending_host_read_len;
+    reg [7:0]         pending_ccc_code;
+    reg [7:0]         pending_ccc_arg;
     reg [1:0]         recovery_retry_op;
 
     reg [SCHEDULE_DIV_W-1:0] schedule_div_cnt;
@@ -137,6 +165,21 @@ module i3c_dual_target_lab_controller #(
     wire       txn_scl_oe;
     wire       txn_sda_o;
     wire       txn_sda_oe;
+
+    reg        ccc_valid;
+    wire       ccc_ready;
+    reg [7:0]  ccc_code;
+    reg [7:0]  ccc_data_len;
+    reg [8*(MAX_SERVICE_BYTES-1)-1:0] ccc_data;
+    wire       ccc_done;
+    wire       ccc_nack;
+    wire       ccc_txn_req_valid;
+    wire       ccc_txn_req_ready;
+    wire [6:0] ccc_txn_req_addr;
+    wire       ccc_txn_req_read;
+    wire [7:0] ccc_txn_req_tx_len;
+    wire [7:0] ccc_txn_req_rx_len;
+    wire [8*MAX_SERVICE_BYTES-1:0] ccc_txn_req_wdata;
 
     reg        dccc_cmd_valid;
     wire       dccc_cmd_ready;
@@ -168,6 +211,8 @@ module i3c_dual_target_lab_controller #(
                           (state == ST_BOOT_GETSTATUS_WAIT) ||
                           (state == ST_BOOT_RSTACT_REQ) ||
                           (state == ST_BOOT_RSTACT_WAIT) ||
+                          (state == ST_RUN_HOST_DCCC_REQ) ||
+                          (state == ST_RUN_HOST_DCCC_WAIT) ||
                           (state >= ST_RECOVER_GETSTATUS_REQ && state <= ST_RECOVER_RECHECK_WAIT) ||
                           (state == ST_ERROR);
 
@@ -215,9 +260,96 @@ module i3c_dual_target_lab_controller #(
         end
     endfunction
 
+    function direct_ccc_is_supported;
+        input [7:0] code;
+        begin
+            case (code)
+                CCC_GETPID,
+                CCC_GETBCR,
+                CCC_GETDCR,
+                CCC_GETSTATUS,
+                CCC_GETMWL,
+                CCC_GETMRL,
+                CCC_GETMXDS,
+                CCC_GETCAPS,
+                CCC_ENEC_DIRECT,
+                CCC_DISEC_DIRECT,
+                CCC_RSTACT: direct_ccc_is_supported = 1'b1;
+                default:    direct_ccc_is_supported = 1'b0;
+            endcase
+        end
+    endfunction
+
+    function direct_ccc_is_read;
+        input [7:0] code;
+        begin
+            case (code)
+                CCC_GETPID,
+                CCC_GETBCR,
+                CCC_GETDCR,
+                CCC_GETSTATUS,
+                CCC_GETMWL,
+                CCC_GETMRL,
+                CCC_GETMXDS,
+                CCC_GETCAPS: direct_ccc_is_read = 1'b1;
+                default:     direct_ccc_is_read = 1'b0;
+            endcase
+        end
+    endfunction
+
+    function [7:0] direct_ccc_rx_len_for;
+        input [7:0] code;
+        begin
+            case (code)
+                CCC_GETPID:    direct_ccc_rx_len_for = 8'd6;
+                CCC_GETBCR:    direct_ccc_rx_len_for = 8'd1;
+                CCC_GETDCR:    direct_ccc_rx_len_for = 8'd1;
+                CCC_GETSTATUS: direct_ccc_rx_len_for = 8'd2;
+                CCC_GETMWL:    direct_ccc_rx_len_for = 8'd2;
+                CCC_GETMRL:    direct_ccc_rx_len_for = 8'd3;
+                CCC_GETMXDS:   direct_ccc_rx_len_for = 8'd2;
+                CCC_GETCAPS:   direct_ccc_rx_len_for = 8'd4;
+                default:       direct_ccc_rx_len_for = 8'd0;
+            endcase
+        end
+    endfunction
+
+    function [7:0] direct_ccc_tx_len_for;
+        input [7:0] code;
+        begin
+            case (code)
+                CCC_ENEC_DIRECT,
+                CCC_DISEC_DIRECT,
+                CCC_RSTACT: direct_ccc_tx_len_for = 8'd1;
+                default:    direct_ccc_tx_len_for = 8'd0;
+            endcase
+        end
+    endfunction
+
+    function broadcast_ccc_is_supported;
+        input [7:0] code;
+        begin
+            case (code)
+                default:         broadcast_ccc_is_supported = 1'b0;
+            endcase
+        end
+    endfunction
+
+    function [7:0] broadcast_ccc_tx_len_for;
+        input [7:0] code;
+        begin
+            case (code)
+                CCC_ENEC_BCAST,
+                CCC_DISEC_BCAST: broadcast_ccc_tx_len_for = 8'd2;
+                default:         broadcast_ccc_tx_len_for = 8'd0;
+            endcase
+        end
+    endfunction
+
     wire [15:0] dccc_status_word = decode_status_word(dccc_rsp_rdata[15:0]);
 
     assign host_cmd_ready = (state == ST_RUN_IDLE);
+    assign host_ccc_ready = (state == ST_RUN_IDLE);
     assign scl_o  = dccc_bus_owner ? dccc_scl_o  : txn_scl_o;
     assign scl_oe = dccc_bus_owner ? dccc_scl_oe : txn_scl_oe;
     assign sda_o  = dccc_bus_owner ? dccc_sda_o  : txn_sda_o;
@@ -252,6 +384,29 @@ module i3c_dual_target_lab_controller #(
         .sda_i       (sda_i)
     );
 
+    i3c_ctrl_ccc #(
+        .MAX_TX_BYTES(MAX_SERVICE_BYTES)
+    ) u_broadcast_ccc (
+        .clk          (clk),
+        .rst_n        (rst_n),
+        .ccc_valid    (ccc_valid),
+        .ccc_ready    (ccc_ready),
+        .ccc_code     (ccc_code),
+        .ccc_data_len (ccc_data_len),
+        .ccc_data     (ccc_data),
+        .ccc_done     (ccc_done),
+        .ccc_nack     (ccc_nack),
+        .txn_req_valid(ccc_txn_req_valid),
+        .txn_req_ready(ccc_txn_req_ready),
+        .txn_req_addr (ccc_txn_req_addr),
+        .txn_req_read (ccc_txn_req_read),
+        .txn_req_tx_len(ccc_txn_req_tx_len),
+        .txn_req_rx_len(ccc_txn_req_rx_len),
+        .txn_req_wdata(ccc_txn_req_wdata),
+        .txn_rsp_valid(txn_rsp_valid),
+        .txn_rsp_nack (txn_rsp_nack)
+    );
+
     i3c_ctrl_txn_layer #(
         .CLK_FREQ_HZ   (CLK_FREQ_HZ),
         .I3C_SDR_HZ    (I3C_SDR_HZ),
@@ -261,13 +416,13 @@ module i3c_dual_target_lab_controller #(
     ) u_txn (
         .clk             (clk),
         .rst_n           (rst_n),
-        .txn_req_valid   (txn_req_valid),
+        .txn_req_valid   (txn_req_valid | ccc_txn_req_valid),
         .txn_req_ready   (txn_req_ready),
-        .txn_req_addr    (txn_req_addr),
-        .txn_req_read    (txn_req_read),
-        .txn_req_tx_len  (txn_req_tx_len),
-        .txn_req_rx_len  (txn_req_rx_len),
-        .txn_req_wdata   (txn_req_wdata),
+        .txn_req_addr    (ccc_txn_req_valid ? ccc_txn_req_addr : txn_req_addr),
+        .txn_req_read    (ccc_txn_req_valid ? ccc_txn_req_read : txn_req_read),
+        .txn_req_tx_len  (ccc_txn_req_valid ? ccc_txn_req_tx_len : txn_req_tx_len),
+        .txn_req_rx_len  (ccc_txn_req_valid ? ccc_txn_req_rx_len : txn_req_rx_len),
+        .txn_req_wdata   (ccc_txn_req_valid ? ccc_txn_req_wdata : txn_req_wdata),
         .txn_rsp_valid   (txn_rsp_valid),
         .txn_rsp_nack    (txn_rsp_nack),
         .txn_rsp_rx_count(txn_rsp_rx_count),
@@ -280,6 +435,8 @@ module i3c_dual_target_lab_controller #(
         .sda_i           (sda_i)
     );
 
+    assign ccc_txn_req_ready = txn_req_ready;
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             state                     <= ST_BOOT_SETDASA_REQ;
@@ -287,9 +444,13 @@ module i3c_dual_target_lab_controller #(
             sched_index               <= 1'b0;
             active_target             <= 1'b0;
             pending_host_target       <= 1'b0;
+            pending_ccc_target        <= 1'b0;
+            pending_ccc_direct        <= 1'b0;
             pending_host_reg_addr     <= 8'h00;
             pending_host_write_value  <= 8'h00;
             pending_host_read_len     <= 8'h00;
+            pending_ccc_code          <= 8'h00;
+            pending_ccc_arg           <= 8'h00;
             recovery_retry_op         <= OP_NONE;
             schedule_div_cnt          <= {SCHEDULE_DIV_W{1'b0}};
             txn_req_valid             <= 1'b0;
@@ -298,6 +459,10 @@ module i3c_dual_target_lab_controller #(
             txn_req_tx_len            <= 8'h00;
             txn_req_rx_len            <= 8'h00;
             txn_req_wdata             <= {8*MAX_SERVICE_BYTES{1'b0}};
+            ccc_valid                 <= 1'b0;
+            ccc_code                  <= 8'h00;
+            ccc_data_len              <= 8'h00;
+            ccc_data                  <= {(8*(MAX_SERVICE_BYTES-1)){1'b0}};
             dccc_cmd_valid            <= 1'b0;
             dccc_ccc_code             <= 8'h00;
             dccc_target_addr          <= 7'h00;
@@ -309,6 +474,10 @@ module i3c_dual_target_lab_controller #(
             host_rsp_error            <= 1'b0;
             host_rsp_len              <= 8'h00;
             host_rsp_data             <= {8*MAX_SERVICE_BYTES{1'b0}};
+            host_ccc_rsp_valid        <= 1'b0;
+            host_ccc_rsp_error        <= 1'b0;
+            host_ccc_rsp_len          <= 8'h00;
+            host_ccc_rsp_data         <= 48'h0;
             boot_done                 <= 1'b0;
             boot_error                <= 1'b0;
             capture_error             <= 1'b0;
@@ -324,8 +493,10 @@ module i3c_dual_target_lab_controller #(
             last_recovery_addr        <= 7'h00;
         end else begin
             txn_req_valid  <= 1'b0;
+            ccc_valid      <= 1'b0;
             dccc_cmd_valid <= 1'b0;
             host_rsp_valid <= 1'b0;
+            host_ccc_rsp_valid <= 1'b0;
             recovery_active <= (state >= ST_RECOVER_GETSTATUS_REQ) && (state <= ST_RECOVER_RECHECK_WAIT);
 
             if (schedule_tick)
@@ -542,7 +713,23 @@ module i3c_dual_target_lab_controller #(
                 end
 
                 ST_RUN_IDLE: begin
-                    if (host_cmd_valid) begin
+                    if (host_ccc_valid) begin
+                        pending_ccc_target <= host_ccc_target;
+                        pending_ccc_direct <= host_ccc_direct;
+                        pending_ccc_code   <= host_ccc_code;
+                        pending_ccc_arg    <= host_ccc_arg;
+                        if (host_ccc_direct && direct_ccc_is_supported(host_ccc_code)) begin
+                            active_target <= host_ccc_target;
+                            state         <= ST_RUN_HOST_DCCC_REQ;
+                        end else if (!host_ccc_direct && broadcast_ccc_is_supported(host_ccc_code)) begin
+                            state <= ST_RUN_HOST_BCCC_REQ;
+                        end else begin
+                            host_ccc_rsp_valid <= 1'b1;
+                            host_ccc_rsp_error <= 1'b1;
+                            host_ccc_rsp_len   <= 8'd0;
+                            host_ccc_rsp_data  <= 48'h0;
+                        end
+                    end else if (host_cmd_valid) begin
                         active_target            <= host_cmd_target;
                         pending_host_target      <= host_cmd_target;
                         pending_host_reg_addr    <= host_cmd_reg_addr;
@@ -558,6 +745,53 @@ module i3c_dual_target_lab_controller #(
                         active_target     <= sched_index;
                         recovery_retry_op <= OP_SCHEDULE_READ;
                         state             <= ST_RUN_SCHED_SEL_REQ;
+                    end
+                end
+
+                ST_RUN_HOST_DCCC_REQ: begin
+                    if (dccc_cmd_ready) begin
+                        dccc_cmd_valid   <= 1'b1;
+                        dccc_ccc_code    <= pending_ccc_code;
+                        dccc_target_addr <= endpoint_dynamic_addr(active_target);
+                        dccc_target_read <= direct_ccc_is_read(pending_ccc_code);
+                        dccc_tx_len      <= direct_ccc_tx_len_for(pending_ccc_code);
+                        dccc_rx_len      <= direct_ccc_rx_len_for(pending_ccc_code);
+                        dccc_tx_data     <= {40'h0, pending_ccc_arg};
+                        state            <= ST_RUN_HOST_DCCC_WAIT;
+                    end
+                end
+
+                ST_RUN_HOST_DCCC_WAIT: begin
+                    if (dccc_rsp_valid) begin
+                        host_ccc_rsp_valid <= 1'b1;
+                        host_ccc_rsp_error <= dccc_rsp_nack;
+                        host_ccc_rsp_len   <= dccc_rsp_nack ? 8'd0 : dccc_rsp_rx_count;
+                        host_ccc_rsp_data  <= dccc_rsp_rdata;
+                        if (!dccc_rsp_nack && (pending_ccc_code == CCC_GETSTATUS) &&
+                            (dccc_rsp_rx_count == STATUS_BYTES)) begin
+                            status_word_flat[active_target*16 +: 16] <= dccc_status_word;
+                        end
+                        state <= ST_RUN_IDLE;
+                    end
+                end
+
+                ST_RUN_HOST_BCCC_REQ: begin
+                    if (ccc_ready) begin
+                        ccc_valid    <= 1'b1;
+                        ccc_code     <= pending_ccc_code;
+                        ccc_data_len <= broadcast_ccc_tx_len_for(pending_ccc_code) - 1'b1;
+                        ccc_data     <= { {(8*(MAX_SERVICE_BYTES-2)){1'b0}}, pending_ccc_arg };
+                        state        <= ST_RUN_HOST_BCCC_WAIT;
+                    end
+                end
+
+                ST_RUN_HOST_BCCC_WAIT: begin
+                    if (ccc_done) begin
+                        host_ccc_rsp_valid <= 1'b1;
+                        host_ccc_rsp_error <= ccc_nack;
+                        host_ccc_rsp_len   <= 8'd0;
+                        host_ccc_rsp_data  <= 48'h0;
+                        state              <= ST_RUN_IDLE;
                     end
                 end
 

@@ -22,6 +22,12 @@ class RegisterWriteRequest(BaseModel):
     value: int = Field(ge=0, le=255)
 
 
+class CccExecuteRequest(BaseModel):
+    command_id: str
+    target: int | None = Field(default=None, ge=0, le=1)
+    arg: int | None = Field(default=None, ge=0, le=255)
+
+
 _serial_lock = threading.Lock()
 
 app = FastAPI(title="Dual Target I3C Lab Backend", version="0.1.0")
@@ -67,6 +73,92 @@ def parse_sample_payload(sample_bytes: list[int]) -> dict[str, Any]:
     }
 
 
+CCC_COMMANDS: list[dict[str, Any]] = [
+    {
+        "id": "getpid",
+        "label": "GETPID",
+        "mode": "direct",
+        "code": 0x8D,
+        "target_required": True,
+        "arg_required": False,
+        "arg_default": 0,
+        "description": "Read the target provisional ID.",
+    },
+    {
+        "id": "getbcr",
+        "label": "GETBCR",
+        "mode": "direct",
+        "code": 0x8E,
+        "target_required": True,
+        "arg_required": False,
+        "arg_default": 0,
+        "description": "Read the target bus characteristics register.",
+    },
+    {
+        "id": "getdcr",
+        "label": "GETDCR",
+        "mode": "direct",
+        "code": 0x8F,
+        "target_required": True,
+        "arg_required": False,
+        "arg_default": 0,
+        "description": "Read the target device characteristics register.",
+    },
+    {
+        "id": "getstatus",
+        "label": "GETSTATUS",
+        "mode": "direct",
+        "code": 0x90,
+        "target_required": True,
+        "arg_required": False,
+        "arg_default": 0,
+        "description": "Read the target CCC status word.",
+    },
+    {
+        "id": "getmrl",
+        "label": "GETMRL",
+        "mode": "direct",
+        "code": 0x8C,
+        "target_required": True,
+        "arg_required": False,
+        "arg_default": 0,
+        "description": "Read the target maximum read length.",
+    },
+    {
+        "id": "getmwl",
+        "label": "GETMWL",
+        "mode": "direct",
+        "code": 0x8B,
+        "target_required": True,
+        "arg_required": False,
+        "arg_default": 0,
+        "description": "Read the target maximum write length.",
+    },
+    {
+        "id": "getmxds",
+        "label": "GETMXDS",
+        "mode": "direct",
+        "code": 0x94,
+        "target_required": True,
+        "arg_required": False,
+        "arg_default": 0,
+        "description": "Read target maximum data speed information.",
+    },
+    {
+        "id": "getcaps",
+        "label": "GETCAPS",
+        "mode": "direct",
+        "code": 0x95,
+        "target_required": True,
+        "arg_required": False,
+        "arg_default": 0,
+        "description": "Read target capability bits.",
+    },
+]
+
+CCC_BY_ID = {item["id"]: item for item in CCC_COMMANDS}
+
+
 def enrich_target_summary(
     client: DualTargetLabClient, target: int, include_registers: bool = True
 ) -> dict[str, Any]:
@@ -110,6 +202,33 @@ def enrich_target_summary(
     return result
 
 
+def decode_ccc_result(command: dict[str, Any], raw_bytes: list[int]) -> dict[str, Any]:
+    code = command["code"]
+    if code == 0x8D and len(raw_bytes) == 6:
+        pid = int.from_bytes(bytes(raw_bytes), "little")
+        return {"pid_hex": f"0x{pid:012X}"}
+    if code in (0x8E, 0x8F) and len(raw_bytes) == 1:
+        key = "bcr_hex" if code == 0x8E else "dcr_hex"
+        return {key: f"0x{raw_bytes[0]:02X}"}
+    if code == 0x90 and len(raw_bytes) == 2:
+        status_word = raw_bytes[0] | (raw_bytes[1] << 8)
+        return {"status_word_hex": f"0x{status_word:04X}"}
+    if code == 0x8B and len(raw_bytes) == 2:
+        value = raw_bytes[0] | (raw_bytes[1] << 8)
+        return {"max_write_len": value}
+    if code == 0x8C and len(raw_bytes) == 3:
+        value = raw_bytes[0] | (raw_bytes[1] << 8)
+        ibi_len = raw_bytes[2]
+        return {"max_read_len": value, "ibi_data_len": ibi_len}
+    if code == 0x94 and len(raw_bytes) == 2:
+        value = raw_bytes[0] | (raw_bytes[1] << 8)
+        return {"mxds_hex": f"0x{value:04X}"}
+    if code == 0x95 and len(raw_bytes) == 4:
+        value = int.from_bytes(bytes(raw_bytes), "little")
+        return {"caps_hex": f"0x{value:08X}"}
+    return {}
+
+
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
@@ -118,6 +237,11 @@ def health() -> dict[str, str]:
 @app.get("/api/config")
 def config() -> dict[str, Any]:
     return {"serial_port_env": os.environ.get("DUAL_TARGET_LAB_PORT")}
+
+
+@app.get("/api/ccc/catalog")
+def ccc_catalog() -> dict[str, Any]:
+    return {"commands": CCC_COMMANDS}
 
 
 @app.post("/api/start")
@@ -233,6 +357,57 @@ def write_target_register(target: int, body: RegisterWriteRequest) -> dict[str, 
             "addr": body.addr,
             "value": body.value,
             "echoed": echoed,
+        }
+    except ProtocolError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/ccc/execute")
+def execute_ccc(body: CccExecuteRequest) -> dict[str, Any]:
+    command = CCC_BY_ID.get(body.command_id)
+    if command is None:
+        raise HTTPException(status_code=400, detail="unknown CCC command")
+    if command["target_required"] and body.target not in (0, 1):
+        raise HTTPException(status_code=400, detail="target must be 0 or 1 for this CCC")
+    if not command["target_required"] and body.target is not None:
+        raise HTTPException(status_code=400, detail="broadcast CCC does not take a target")
+
+    arg_value = command["arg_default"] if body.arg is None else body.arg
+
+    try:
+        with locked_client() as client:
+            if command["mode"] == "direct":
+                raw = client.direct_ccc(body.target or 0, command["code"], arg_value)
+                post_target = enrich_target_summary(client, body.target or 0)
+                post_status = client.status()
+            else:
+                raw = client.broadcast_ccc(command["code"], arg_value)
+                post_target = None
+                post_status = client.status()
+        return {
+            "command": command,
+            "target": body.target,
+            "arg": arg_value,
+            "arg_hex": f"0x{arg_value:02X}",
+            "response_len": raw["length"],
+            "response_hex": raw["hex"],
+            "response_bytes": raw["bytes"],
+            "decoded": decode_ccc_result(command, raw["bytes"]),
+            "post_status": {
+                **post_status,
+                "verified_targets": [bool(post_status["verified_bitmap"] & 0x01), bool(post_status["verified_bitmap"] & 0x02)],
+                "sample_valid_targets": [
+                    bool(post_status["sample_valid_bitmap"] & 0x01),
+                    bool(post_status["sample_valid_bitmap"] & 0x02),
+                ],
+                "target_led_targets": [
+                    bool(post_status["target_led_state"] & 0x01),
+                    bool(post_status["target_led_state"] & 0x02),
+                ],
+            },
+            "post_target": post_target,
         }
     except ProtocolError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

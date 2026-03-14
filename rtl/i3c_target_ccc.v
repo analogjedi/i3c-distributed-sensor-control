@@ -361,13 +361,15 @@ module i3c_target_ccc #(
                 collecting_direct_data  <= 1'b0;
                 collecting_broadcast_data <= 1'b0;
                 collecting_entdaa_assign<= 1'b0;
-                direct_target_match     <= 1'b0;
+                direct_target_match     <= collecting_direct_data ? direct_target_match : 1'b0;
                 entdaa_lost            <= 1'b0;
             end else if (sda_rising && scl) begin
                 // STOP or repeated-start preamble. Preserve pending direct/ENTDAA
                 // context by moving back to ST_ADDR when a follow-on address phase
                 // is expected, matching the pre-synchronous model behavior.
-                state                   <= (pending_direct_ccc || pending_entdaa) ? ST_ADDR : ST_IDLE;
+                state                   <= (collecting_direct_data || collecting_broadcast_data ||
+                                            pending_broadcast_data) ? ST_DATA :
+                                           ((pending_direct_ccc || pending_entdaa) ? ST_ADDR : ST_IDLE);
                 ack_context             <= ACK_NONE;
                 bit_pos                 <= 4'd0;
                 shift_reg               <= 8'h00;
@@ -377,7 +379,8 @@ module i3c_target_ccc #(
                 current_rw              <= 1'b0;
                 current_addr_is_ccc     <= 1'b0;
                 collecting_ccc_code     <= 1'b0;
-                collecting_direct_data  <= 1'b0;
+                collecting_direct_data  <= collecting_direct_data;
+                collecting_broadcast_data <= collecting_broadcast_data || pending_broadcast_data;
                 collecting_entdaa_assign<= 1'b0;
                 direct_target_match     <= 1'b0;
                 entdaa_lost            <= 1'b0;
@@ -385,9 +388,28 @@ module i3c_target_ccc #(
                 read_bit_pos            <= 4'd0;
                 read_byte_idx           <= 4'd0;
                 read_len                <= 4'd0;
-                data_expected           <= 2'd0;
+                if (collecting_direct_data) begin
+                    if (current_ccc == CCC_SETMWL_DIRECT) begin
+                        data_expected <= 2'd2;
+                    end else if (current_ccc == CCC_SETMRL_DIRECT) begin
+                        data_expected <= 2'd3;
+                    end else begin
+                        data_expected <= 2'd1;
+                    end
+                end else if (collecting_broadcast_data || pending_broadcast_data) begin
+                    if (current_ccc == CCC_SETMWL_BCAST) begin
+                        data_expected <= 2'd2;
+                    end else if (current_ccc == CCC_SETMRL_BCAST) begin
+                        data_expected <= 2'd3;
+                    end else begin
+                        data_expected <= 2'd1;
+                    end
+                end else begin
+                    data_expected <= 2'd0;
+                end
                 data_count              <= 2'd0;
-                if (!(pending_direct_ccc || pending_entdaa)) begin
+                if (!(pending_direct_ccc || pending_entdaa || pending_broadcast_data ||
+                      collecting_direct_data || collecting_broadcast_data)) begin
                     transport_holdoff   <= 1'b0;
                 end
             end else if (scl_falling) begin

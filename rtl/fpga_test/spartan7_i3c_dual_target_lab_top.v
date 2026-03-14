@@ -129,6 +129,16 @@ module spartan7_i3c_dual_target_lab_top #(
     wire       ctrl_rsp_error;
     wire [7:0] ctrl_rsp_len;
     wire [127:0] ctrl_rsp_data;
+    wire       ctrl_ccc_valid;
+    wire       ctrl_ccc_ready;
+    wire       ctrl_ccc_direct;
+    wire       ctrl_ccc_target;
+    wire [7:0] ctrl_ccc_code;
+    wire [7:0] ctrl_ccc_arg;
+    wire       ctrl_ccc_rsp_valid;
+    wire       ctrl_ccc_rsp_error;
+    wire [7:0] ctrl_ccc_rsp_len;
+    wire [47:0] ctrl_ccc_rsp_data;
 
     wire tgt0_indicator;
     wire tgt1_indicator;
@@ -172,7 +182,17 @@ module spartan7_i3c_dual_target_lab_top #(
         .ctrl_rsp_valid   (ctrl_rsp_valid),
         .ctrl_rsp_error   (ctrl_rsp_error),
         .ctrl_rsp_len     (ctrl_rsp_len),
-        .ctrl_rsp_data    (ctrl_rsp_data)
+        .ctrl_rsp_data    (ctrl_rsp_data),
+        .ccc_cmd_valid    (ctrl_ccc_valid),
+        .ccc_cmd_ready    (ctrl_ccc_ready),
+        .ccc_cmd_direct   (ctrl_ccc_direct),
+        .ccc_cmd_target   (ctrl_ccc_target),
+        .ccc_cmd_code     (ctrl_ccc_code),
+        .ccc_cmd_arg      (ctrl_ccc_arg),
+        .ccc_rsp_valid    (ctrl_ccc_rsp_valid),
+        .ccc_rsp_error    (ctrl_ccc_rsp_error),
+        .ccc_rsp_len      (ctrl_ccc_rsp_len),
+        .ccc_rsp_data     (ctrl_ccc_rsp_data)
     );
 
     i3c_dual_target_lab_controller #(
@@ -197,6 +217,16 @@ module spartan7_i3c_dual_target_lab_top #(
         .host_rsp_error        (ctrl_rsp_error),
         .host_rsp_len          (ctrl_rsp_len),
         .host_rsp_data         (ctrl_rsp_data),
+        .host_ccc_valid        (ctrl_ccc_valid),
+        .host_ccc_ready        (ctrl_ccc_ready),
+        .host_ccc_direct       (ctrl_ccc_direct),
+        .host_ccc_target       (ctrl_ccc_target),
+        .host_ccc_code         (ctrl_ccc_code),
+        .host_ccc_arg          (ctrl_ccc_arg),
+        .host_ccc_rsp_valid    (ctrl_ccc_rsp_valid),
+        .host_ccc_rsp_error    (ctrl_ccc_rsp_error),
+        .host_ccc_rsp_len      (ctrl_ccc_rsp_len),
+        .host_ccc_rsp_data     (ctrl_ccc_rsp_data),
         .boot_done             (boot_done),
         .boot_error            (boot_error),
         .capture_error         (capture_error),

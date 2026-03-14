@@ -33,7 +33,18 @@ module uart_dual_target_lab_cmd_handler #(
     input  wire                           ctrl_rsp_valid,
     input  wire                           ctrl_rsp_error,
     input  wire [7:0]                     ctrl_rsp_len,
-    input  wire [8*MAX_READ_BYTES-1:0]    ctrl_rsp_data
+    input  wire [8*MAX_READ_BYTES-1:0]    ctrl_rsp_data,
+
+    output reg                            ccc_cmd_valid,
+    input  wire                           ccc_cmd_ready,
+    output reg                            ccc_cmd_direct,
+    output reg                            ccc_cmd_target,
+    output reg  [7:0]                     ccc_cmd_code,
+    output reg  [7:0]                     ccc_cmd_arg,
+    input  wire                           ccc_rsp_valid,
+    input  wire                           ccc_rsp_error,
+    input  wire [7:0]                     ccc_rsp_len,
+    input  wire [47:0]                    ccc_rsp_data
 );
 
     localparam [7:0] REQ_SYNC        = 8'hA5;
@@ -43,6 +54,8 @@ module uart_dual_target_lab_cmd_handler #(
     localparam [7:0] CMD_SUMMARY     = 8'h10;
     localparam [7:0] CMD_READ_REG    = 8'h11;
     localparam [7:0] CMD_WRITE_REG   = 8'h12;
+    localparam [7:0] CMD_DIRECT_CCC  = 8'h20;
+    localparam [7:0] CMD_BCAST_CCC   = 8'h21;
 
     localparam [7:0] STS_OK          = 8'h00;
     localparam [7:0] STS_BAD_CMD     = 8'h01;
@@ -94,11 +107,16 @@ module uart_dual_target_lab_cmd_handler #(
             tx_valid         <= 1'b0;
             soft_start       <= 1'b0;
             ctrl_cmd_valid   <= 1'b0;
+            ccc_cmd_valid    <= 1'b0;
             ctrl_cmd_read    <= 1'b0;
             ctrl_cmd_target  <= 1'b0;
             ctrl_cmd_reg_addr <= 8'h00;
             ctrl_cmd_write_value <= 8'h00;
             ctrl_cmd_read_len <= 8'h00;
+            ccc_cmd_direct   <= 1'b0;
+            ccc_cmd_target   <= 1'b0;
+            ccc_cmd_code     <= 8'h00;
+            ccc_cmd_arg      <= 8'h00;
             resp_len         <= {RESP_IDX_W{1'b0}};
             resp_idx         <= {RESP_IDX_W{1'b0}};
             for (i = 0; i < MAX_RESP_BYTES; i = i + 1)
@@ -107,6 +125,7 @@ module uart_dual_target_lab_cmd_handler #(
             tx_valid       <= 1'b0;
             soft_start     <= 1'b0;
             ctrl_cmd_valid <= 1'b0;
+            ccc_cmd_valid  <= 1'b0;
 
             case (state)
                 RX_IDLE: begin
@@ -126,7 +145,8 @@ module uart_dual_target_lab_cmd_handler #(
                                 frame_arg1 <= rx_data;
 
                                 if ((frame_target != 8'h00) && (frame_target != 8'h01) &&
-                                    (frame_cmd == CMD_SUMMARY || frame_cmd == CMD_READ_REG || frame_cmd == CMD_WRITE_REG)) begin
+                                    (frame_cmd == CMD_SUMMARY || frame_cmd == CMD_READ_REG ||
+                                     frame_cmd == CMD_WRITE_REG || frame_cmd == CMD_DIRECT_CCC)) begin
                                     prepare_response_header(STS_BAD_TARGET, 8'd0);
                                     state <= SEND_RESP;
                                 end else begin
@@ -200,6 +220,34 @@ module uart_dual_target_lab_cmd_handler #(
                                             end
                                         end
 
+                                        CMD_DIRECT_CCC: begin
+                                            if (!boot_done || !ccc_cmd_ready) begin
+                                                prepare_response_header(STS_BUSY, 8'd0);
+                                                state <= SEND_RESP;
+                                            end else begin
+                                                ccc_cmd_valid  <= 1'b1;
+                                                ccc_cmd_direct <= 1'b1;
+                                                ccc_cmd_target <= frame_target[0];
+                                                ccc_cmd_code   <= frame_arg0;
+                                                ccc_cmd_arg    <= rx_data;
+                                                state          <= WAIT_CTRL;
+                                            end
+                                        end
+
+                                        CMD_BCAST_CCC: begin
+                                            if (!boot_done || !ccc_cmd_ready) begin
+                                                prepare_response_header(STS_BUSY, 8'd0);
+                                                state <= SEND_RESP;
+                                            end else begin
+                                                ccc_cmd_valid  <= 1'b1;
+                                                ccc_cmd_direct <= 1'b0;
+                                                ccc_cmd_target <= 1'b0;
+                                                ccc_cmd_code   <= frame_arg0;
+                                                ccc_cmd_arg    <= rx_data;
+                                                state          <= WAIT_CTRL;
+                                            end
+                                        end
+
                                         default: begin
                                             prepare_response_header(STS_BAD_CMD, 8'd0);
                                             state <= SEND_RESP;
@@ -219,6 +267,14 @@ module uart_dual_target_lab_cmd_handler #(
                         prepare_response_header(ctrl_rsp_error ? STS_CTRL_ERROR : STS_OK, ctrl_rsp_len);
                         for (i = 0; i < MAX_READ_BYTES; i = i + 1)
                             resp[3+i] <= ctrl_rsp_data[i*8 +: 8];
+                        state <= SEND_RESP;
+                    end else if (ccc_rsp_valid) begin
+                        prepare_response_header(ccc_rsp_error ? STS_CTRL_ERROR : STS_OK, ccc_rsp_len + 8'd3);
+                        resp[3] <= frame_cmd;
+                        resp[4] <= frame_arg0;
+                        resp[5] <= ccc_rsp_len;
+                        for (i = 0; i < 6; i = i + 1)
+                            resp[6+i] <= ccc_rsp_data[i*8 +: 8];
                         state <= SEND_RESP;
                     end
                 end

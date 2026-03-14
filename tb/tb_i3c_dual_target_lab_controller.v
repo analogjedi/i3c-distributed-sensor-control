@@ -30,6 +30,16 @@ module tb_i3c_dual_target_lab_controller;
     wire host_rsp_error;
     wire [7:0] host_rsp_len;
     wire [127:0] host_rsp_data;
+    reg  host_ccc_valid;
+    wire host_ccc_ready;
+    reg  host_ccc_direct;
+    reg  host_ccc_target;
+    reg  [7:0] host_ccc_code;
+    reg  [7:0] host_ccc_arg;
+    wire host_ccc_rsp_valid;
+    wire host_ccc_rsp_error;
+    wire [7:0] host_ccc_rsp_len;
+    wire [47:0] host_ccc_rsp_data;
 
     wire boot_done;
     wire boot_error;
@@ -71,6 +81,16 @@ module tb_i3c_dual_target_lab_controller;
         .host_rsp_error        (host_rsp_error),
         .host_rsp_len          (host_rsp_len),
         .host_rsp_data         (host_rsp_data),
+        .host_ccc_valid        (host_ccc_valid),
+        .host_ccc_ready        (host_ccc_ready),
+        .host_ccc_direct       (host_ccc_direct),
+        .host_ccc_target       (host_ccc_target),
+        .host_ccc_code         (host_ccc_code),
+        .host_ccc_arg          (host_ccc_arg),
+        .host_ccc_rsp_valid    (host_ccc_rsp_valid),
+        .host_ccc_rsp_error    (host_ccc_rsp_error),
+        .host_ccc_rsp_len      (host_ccc_rsp_len),
+        .host_ccc_rsp_data     (host_ccc_rsp_data),
         .boot_done             (boot_done),
         .boot_error            (boot_error),
         .capture_error         (capture_error),
@@ -186,7 +206,56 @@ module tb_i3c_dual_target_lab_controller;
         end
     endtask
 
+    task automatic issue_direct_ccc;
+        input        target;
+        input [7:0]  ccc_code;
+        input [7:0]  ccc_arg;
+        output [47:0] data;
+        output [7:0]  data_len;
+        begin
+            @(posedge clk);
+            while (!host_ccc_ready) @(posedge clk);
+            host_ccc_valid  <= 1'b1;
+            host_ccc_direct <= 1'b1;
+            host_ccc_target <= target;
+            host_ccc_code   <= ccc_code;
+            host_ccc_arg    <= ccc_arg;
+            @(posedge clk);
+            host_ccc_valid <= 1'b0;
+            while (!host_ccc_rsp_valid) @(posedge clk);
+            if (host_ccc_rsp_error) begin
+                $display("FAIL: direct CCC returned error target=%0d code=0x%02x", target, ccc_code);
+                $finish;
+            end
+            data     = host_ccc_rsp_data;
+            data_len = host_ccc_rsp_len;
+        end
+    endtask
+
+    task automatic issue_broadcast_ccc;
+        input [7:0] ccc_code;
+        input [7:0] ccc_arg;
+        begin
+            @(posedge clk);
+            while (!host_ccc_ready) @(posedge clk);
+            host_ccc_valid  <= 1'b1;
+            host_ccc_direct <= 1'b0;
+            host_ccc_target <= 1'b0;
+            host_ccc_code   <= ccc_code;
+            host_ccc_arg    <= ccc_arg;
+            @(posedge clk);
+            host_ccc_valid <= 1'b0;
+            while (!host_ccc_rsp_valid) @(posedge clk);
+            if (host_ccc_rsp_error) begin
+                $display("FAIL: broadcast CCC returned error code=0x%02x", ccc_code);
+                $finish;
+            end
+        end
+    endtask
+
     reg [127:0] readback;
+    reg [47:0]  ccc_readback;
+    reg [7:0]   ccc_readback_len;
 
     initial begin
         $dumpfile("tb_i3c_dual_target_lab_controller.vcd");
@@ -198,6 +267,11 @@ module tb_i3c_dual_target_lab_controller;
         host_cmd_reg_addr    = 8'h00;
         host_cmd_write_value = 8'h00;
         host_cmd_read_len    = 8'h00;
+        host_ccc_valid       = 1'b0;
+        host_ccc_direct      = 1'b0;
+        host_ccc_target      = 1'b0;
+        host_ccc_code        = 8'h00;
+        host_ccc_arg         = 8'h00;
 
         repeat (20) @(posedge clk);
         rst_n = 1'b1;
@@ -244,6 +318,30 @@ module tb_i3c_dual_target_lab_controller;
         issue_read(1'b1, 8'h10, 8'd10, readback);
         if (readback[79:0] == 80'h0) begin
             $display("FAIL: target1 sample payload readback is zero");
+            $finish;
+        end
+
+        issue_direct_ccc(1'b0, 8'h8D, 8'h00, ccc_readback, ccc_readback_len);
+        if ((ccc_readback_len != 8'd6) || (ccc_readback != 48'h11_00_00_00_00_41)) begin
+            $display("FAIL: GETPID target0 mismatch len=%0d data=0x%012x", ccc_readback_len, ccc_readback);
+            $finish;
+        end
+
+        issue_direct_ccc(1'b1, 8'h90, 8'h00, ccc_readback, ccc_readback_len);
+        if ((ccc_readback_len != 8'd2) || (ccc_readback[15:0] == 16'h0000)) begin
+            $display("FAIL: GETSTATUS target1 mismatch len=%0d data=0x%04x", ccc_readback_len, ccc_readback[15:0]);
+            $finish;
+        end
+
+        issue_direct_ccc(1'b0, 8'h8E, 8'h00, ccc_readback, ccc_readback_len);
+        if ((ccc_readback_len != 8'd1) || (ccc_readback[7:0] != 8'h21)) begin
+            $display("FAIL: GETBCR target0 mismatch len=%0d data=0x%02x", ccc_readback_len, ccc_readback[7:0]);
+            $finish;
+        end
+
+        issue_direct_ccc(1'b1, 8'h8F, 8'h00, ccc_readback, ccc_readback_len);
+        if ((ccc_readback_len != 8'd1) || (ccc_readback[7:0] != 8'h90)) begin
+            $display("FAIL: GETDCR target1 mismatch len=%0d data=0x%02x", ccc_readback_len, ccc_readback[7:0]);
             $finish;
         end
 

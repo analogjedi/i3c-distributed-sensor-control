@@ -16,7 +16,12 @@ That CMOD S7 demo contains:
 - 10-byte sensor-style payload windows per target
 - one writable control register per target that drives a visible LED/output
 - UART command transport
-- Python client, FastAPI backend, and Next.js dashboard scaffolding
+- Python client, FastAPI backend, and a two-tab Next.js dashboard
+
+The dashboard is intentionally split into:
+
+- `Operations`: live polling, payload validation, register tools, and target LED control
+- `CCC Lab`: safe read-only direct CCC inspection for identity, capability, and status queries
 
 If you want the shortest path to “program FPGA, inspect target A/B, read payloads, and toggle outputs,” this is the path to use.
 
