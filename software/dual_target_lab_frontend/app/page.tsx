@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type SystemStatus = {
   boot_done: boolean;
@@ -386,7 +386,10 @@ function TargetPanel({
 
       <div style={samplePanelStyle}>
         <div style={sampleHeaderStyle}>
-          <h3 style={sectionTitleStyle}>Sensor Payload</h3>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <h3 style={{ ...sectionTitleStyle, margin: 0 }}>Sensor Payload</h3>
+            <PayloadInfoButton target={target} />
+          </div>
           <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" as const }}>
             <code style={monoStyle}>{target.sample_payload}</code>
             <span style={{ ...monoStyle, color: "#f0b429" }}>
@@ -483,6 +486,67 @@ function TargetPanel({
         </dl>
       </div>
     </article>
+  );
+}
+
+function PayloadInfoButton({ target }: { target: TargetSummary }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const ch0 = target.parsed_payload.channels[0];
+  const fc8 = ch0 != null ? extractFc8(ch0, target.target) : null;
+  const offset = target.target << 8;
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  return (
+    <div ref={ref} style={{ position: "relative" as const, display: "inline-block" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={infoBtnStyle}
+        title="Show payload math"
+      >ⓘ</button>
+      {open && fc8 != null && (
+        <div style={popoverStyle}>
+          <p style={popoverTitleStyle}>Payload Formula — {target.name}</p>
+          <table style={{ ...validationTableStyle, fontSize: 12 }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Field</th>
+                <th style={thStyle}>Formula</th>
+                <th style={thStyle}>Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ["fc[7:0]",   `Ch0 − 0x${(0x1000 + offset).toString(16).toUpperCase()}`,        `0x${fc8.toString(16).toUpperCase().padStart(2,"0")} (${fc8})`],
+                ["Ch 0",      `0x${(0x1000+offset).toString(16).toUpperCase()} + fc`,            String(0x1000 + offset + fc8)],
+                ["Ch 1",      `0x${(0x2000+offset).toString(16).toUpperCase()} + 3×fc`,          String(0x2000 + offset + 3*fc8)],
+                ["Ch 2",      `0x${(0x3000+offset).toString(16).toUpperCase()} + 5×fc`,          String(0x3000 + offset + 5*fc8)],
+                ["Ch 3",      `0x${(0x4000+offset).toString(16).toUpperCase()} + 7×fc`,          String(0x4000 + offset + 7*fc8)],
+                ["Temp",      `0x50 + ${target.target} + fc[3:0]`,                               String(0x50 + target.target + (fc8 & 0xF))],
+                ["Misc",      `{idx[2:0], fc[4:0]}`,                                             String(((target.target & 0x7) << 5) | (fc8 & 0x1F))],
+              ].map(([field, formula, value]) => (
+                <tr key={field}>
+                  <td style={{ ...tdStyle, fontWeight: 700 }}>{field}</td>
+                  <td style={{ ...tdStyle, fontFamily: "monospace", color: "#9fb3c8" }}>{formula}</td>
+                  <td style={{ ...tdStyle, fontFamily: "monospace", color: "#f0b429" }}>{value}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p style={{ margin: "10px 0 0", fontSize: 11, color: "#9fb3c8" }}>
+            TARGET_OFFSET = 0x{offset.toString(16).toUpperCase().padStart(4,"0")} (TARGET_INDEX={target.target})
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -924,6 +988,44 @@ const monoStyle = {
   fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
   color: "#9fb3c8",
   fontSize: 12,
+};
+
+const infoBtnStyle = {
+  background: "rgba(240,180,41,0.15)",
+  border: "1px solid rgba(240,180,41,0.35)",
+  color: "#f0b429",
+  borderRadius: "50%",
+  width: 22,
+  height: 22,
+  fontSize: 13,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 0,
+  lineHeight: 1,
+} as const;
+
+const popoverStyle = {
+  position: "absolute" as const,
+  top: 28,
+  left: 0,
+  zIndex: 100,
+  background: "#0b1f33",
+  border: "1px solid rgba(240,180,41,0.3)",
+  borderRadius: 16,
+  padding: 16,
+  minWidth: 340,
+  boxShadow: "0 12px 40px rgba(0,0,0,0.5)",
+};
+
+const popoverTitleStyle = {
+  margin: "0 0 10px",
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#f0b429",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.08em",
 };
 
 const validationTableStyle = {
