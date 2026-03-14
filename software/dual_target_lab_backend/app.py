@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,8 @@ class RegisterWriteRequest(BaseModel):
     value: int = Field(ge=0, le=255)
 
 
+_serial_lock = threading.Lock()
+
 app = FastAPI(title="Dual Target I3C Lab Backend", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
@@ -34,6 +37,15 @@ app.add_middleware(
 def open_client() -> DualTargetLabClient:
     port = os.environ.get("DUAL_TARGET_LAB_PORT")
     return DualTargetLabClient(port=port)
+
+
+from contextlib import contextmanager
+
+@contextmanager
+def locked_client():
+    with _serial_lock:
+        with open_client() as client:
+            yield client
 
 
 def parse_sample_payload(sample_bytes: list[int]) -> dict[str, Any]:
@@ -73,7 +85,9 @@ def enrich_target_summary(
 
     try:
         meta = client.read_reg(target, 0x04, 12)
-    except ProtocolError:
+        if len(meta) < 12:
+            raise ProtocolError(f"Short register read: {len(meta)} bytes")
+    except (ProtocolError, IndexError):
         result["registers"] = None
         return result
 
@@ -109,7 +123,7 @@ def config() -> dict[str, Any]:
 @app.post("/api/start")
 def start_demo() -> dict[str, str]:
     try:
-        with open_client() as client:
+        with locked_client() as client:
             client.start()
         return {"status": "started"}
     except ProtocolError as exc:
@@ -121,7 +135,7 @@ def start_demo() -> dict[str, str]:
 @app.get("/api/status")
 def get_status() -> dict[str, Any]:
     try:
-        with open_client() as client:
+        with locked_client() as client:
             status = client.status()
             return {
                 **status,
@@ -144,7 +158,7 @@ def get_status() -> dict[str, Any]:
 @app.get("/api/dashboard")
 def get_dashboard() -> dict[str, Any]:
     try:
-        with open_client() as client:
+        with locked_client() as client:
             status = client.status()
             enriched_status = {
                 **status,
@@ -158,12 +172,13 @@ def get_dashboard() -> dict[str, Any]:
                     bool(status["target_led_state"] & 0x02),
                 ],
             }
-            include_registers = bool(status["boot_done"])
+            # Skip register reads in the continuous poll — too much serial traffic.
+            # Registers are available on-demand via /api/targets/{target}/registers.
             return {
                 "status": enriched_status,
                 "targets": [
-                    enrich_target_summary(client, 0, include_registers=include_registers),
-                    enrich_target_summary(client, 1, include_registers=include_registers),
+                    enrich_target_summary(client, 0, include_registers=False),
+                    enrich_target_summary(client, 1, include_registers=False),
                 ],
             }
     except ProtocolError as exc:
@@ -177,7 +192,7 @@ def get_target_summary(target: int) -> dict[str, Any]:
     if target not in (0, 1):
         raise HTTPException(status_code=400, detail="target must be 0 or 1")
     try:
-        with open_client() as client:
+        with locked_client() as client:
             return enrich_target_summary(client, target)
     except ProtocolError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
@@ -192,7 +207,7 @@ def read_target_registers(target: int, addr: int, length: int) -> dict[str, Any]
     if not (0 <= addr <= 255 and 1 <= length <= 16):
         raise HTTPException(status_code=400, detail="addr must be 0..255 and length must be 1..16")
     try:
-        with open_client() as client:
+        with locked_client() as client:
             data = client.read_reg(target, addr, length)
         return {
             "target": target,
@@ -212,7 +227,7 @@ def write_target_register(target: int, body: RegisterWriteRequest) -> dict[str, 
     if target not in (0, 1):
         raise HTTPException(status_code=400, detail="target must be 0 or 1")
     try:
-        with open_client() as client:
+        with locked_client() as client:
             echoed = client.write_reg(target, body.addr, body.value)
         return {
             "target": target,

@@ -180,7 +180,7 @@ module uart_dual_target_lab_cmd_handler #(
                                                 ctrl_cmd_target      <= frame_target[0];
                                                 ctrl_cmd_reg_addr    <= frame_arg0;
                                                 ctrl_cmd_write_value <= 8'h00;
-                                                ctrl_cmd_read_len    <= frame_arg1;
+                                                ctrl_cmd_read_len    <= rx_data; // use rx_data directly; frame_arg1 not yet updated
                                                 state                <= WAIT_CTRL;
                                             end
                                         end
@@ -194,7 +194,7 @@ module uart_dual_target_lab_cmd_handler #(
                                                 ctrl_cmd_read        <= 1'b0;
                                                 ctrl_cmd_target      <= frame_target[0];
                                                 ctrl_cmd_reg_addr    <= frame_arg0;
-                                                ctrl_cmd_write_value <= frame_arg1;
+                                                ctrl_cmd_write_value <= rx_data; // use rx_data directly; frame_arg1 not yet updated
                                                 ctrl_cmd_read_len    <= 8'd1;
                                                 state                <= WAIT_CTRL;
                                             end
