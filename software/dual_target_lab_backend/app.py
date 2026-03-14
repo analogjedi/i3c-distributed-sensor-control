@@ -172,13 +172,12 @@ def get_dashboard() -> dict[str, Any]:
                     bool(status["target_led_state"] & 0x02),
                 ],
             }
-            # Skip register reads in the continuous poll — too much serial traffic.
-            # Registers are available on-demand via /api/targets/{target}/registers.
+            include_registers = bool(status["boot_done"])
             return {
                 "status": enriched_status,
                 "targets": [
-                    enrich_target_summary(client, 0, include_registers=False),
-                    enrich_target_summary(client, 1, include_registers=False),
+                    enrich_target_summary(client, 0, include_registers=include_registers),
+                    enrich_target_summary(client, 1, include_registers=include_registers),
                 ],
             }
     except ProtocolError as exc:
