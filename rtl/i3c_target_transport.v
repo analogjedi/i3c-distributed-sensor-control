@@ -173,7 +173,7 @@ module i3c_target_transport #(
                             end else begin
                                 ack_pending <= 1'b0;
                                 bit_pos     <= 4'd0;
-                                phase       <= P_IGNORE;
+                                phase       <= P_WRITE;
                             end
                         end
 

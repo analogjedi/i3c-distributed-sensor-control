@@ -1,0 +1,161 @@
+# Dual-Target Lab Interface
+
+This document describes the dedicated CMOD S7 dual-target lab image:
+
+- top: `spartan7_i3c_dual_target_lab_top`
+- controller: `rtl/fpga_test/i3c_dual_target_lab_controller.v`
+- targets: `rtl/fpga_test/i3c_sensor_gpio_target_demo.v`
+- UART bridge: `rtl/uart_dual_target_lab_cmd_handler.v`
+
+## Purpose
+
+The lab image is intentionally narrower than the five-target unified demo:
+
+- 1 controller
+- 2 known internal targets
+- deterministic sample polling
+- writable target register map
+- two target-controlled LED outputs
+- host-facing UART protocol for target A/B register reads and writes
+
+This is meant for controller/host integration work, not for showing off how many synthetic targets fit on a board.
+
+## Target Register Map
+
+Each target exposes the same register map.
+
+| Address | Size | Access | Meaning |
+| --- | --- | --- | --- |
+| `0x00..0x03` | 4 | Read | 32-bit target signature, little-endian |
+| `0x04` | 1 | Read/Write | LED/output control (`bit0`) |
+| `0x05` | 1 | Read | Target index |
+| `0x06..0x07` | 2 | Read | Frame counter |
+| `0x08` | 1 | Read | Target-local status summary |
+| `0x09` | 1 | Read | Last seen CCC code |
+| `0x0A` | 1 | Read | Event-enable mask |
+| `0x0B` | 1 | Read | `RSTACT` action |
+| `0x0C..0x0D` | 2 | Read | CCC status word |
+| `0x0E..0x0F` | 2 | Read | Activity/group-address summary |
+| `0x10..0x19` | 10 | Read | Sensor payload window |
+| `0x1A..0x1D` | 4 | Read | Max read/write length bytes |
+| `0x1E` | 1 | Read | IBI data length field |
+
+The sensor payload window uses the same 10-byte layout as the main demo:
+
+| Byte Offset | Meaning |
+| --- | --- |
+| `0..1` | Sample 0, little-endian |
+| `2..3` | Sample 1, little-endian |
+| `4..5` | Sample 2, little-endian |
+| `6..7` | Sample 3, little-endian |
+| `8` | Temperature |
+| `9` | Misc/status |
+
+## UART Protocol
+
+Request frame:
+
+| Byte | Meaning |
+| --- | --- |
+| `0` | Sync `0xA5` |
+| `1` | Command |
+| `2` | Target (`0` or `1`) |
+| `3` | `arg0` |
+| `4` | `arg1` |
+
+Response frame:
+
+| Byte | Meaning |
+| --- | --- |
+| `0` | Sync `0x5A` |
+| `1` | Status |
+| `2` | Payload length |
+| `3..` | Payload bytes |
+
+Status codes:
+
+| Code | Meaning |
+| --- | --- |
+| `0x00` | Success |
+| `0x01` | Bad command |
+| `0x02` | Busy / not booted |
+| `0x03` | Bad target |
+| `0x04` | Controller-side transaction error |
+
+Commands:
+
+| Command | Code | `arg0` | `arg1` | Response payload |
+| --- | --- | --- | --- | --- |
+| Start | `0x01` | ignored | ignored | none |
+| Status | `0x02` | ignored | ignored | 4 bytes |
+| Target summary | `0x10` | ignored | ignored | 18 bytes |
+| Read target registers | `0x11` | register address | length (`1..16`) | register bytes |
+| Write target register | `0x12` | register address | value | echoed value |
+
+Status payload:
+
+| Byte | Meaning |
+| --- | --- |
+| `0` | flags: `bit0=boot_done`, `bit1=boot_error`, `bit2=capture_error` |
+| `1` | verified bitmap |
+| `2` | sample-valid bitmap |
+| `3` | target LED-state bitmap |
+
+Target summary payload:
+
+| Byte | Meaning |
+| --- | --- |
+| `0` | target index |
+| `1` | dynamic address |
+| `2` | verified flag |
+| `3` | LED state |
+| `4..7` | signature |
+| `8..17` | latest 10-byte sampled payload |
+
+## Python Client
+
+`tools/dual_target_lab_client.py` provides:
+
+- `start`
+- `status`
+- `summary <target>`
+- `read <target> <addr> <length>`
+- `write <target> <addr> <value>`
+- `monitor`
+
+Examples:
+
+```bash
+python tools/dual_target_lab_client.py start
+python tools/dual_target_lab_client.py status
+python tools/dual_target_lab_client.py summary 0
+python tools/dual_target_lab_client.py read 1 0x10 10
+python tools/dual_target_lab_client.py write 0 0x04 0x01
+```
+
+## Backend / Dashboard
+
+FastAPI backend:
+
+- file: `software/dual_target_lab_backend/app.py`
+- environment variable: `DUAL_TARGET_LAB_PORT`
+
+Endpoints:
+
+- `POST /api/start`
+- `GET /api/status`
+- `GET /api/targets/{target}`
+- `GET /api/targets/{target}/registers?addr=<n>&length=<n>`
+- `POST /api/targets/{target}/registers`
+
+Next.js frontend:
+
+- file: `software/dual_target_lab_frontend/app/page.tsx`
+- environment variable: `NEXT_PUBLIC_API_BASE`
+
+The frontend is intentionally small:
+
+- start the demo
+- poll status
+- read target A/B summaries
+- toggle each target LED through the real controller-to-target write path

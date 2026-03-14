@@ -133,15 +133,22 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `rtl/spartan7_i3c_top.v`: Original minimal top-level wrapper for Spartan-7 SDR bring-up.
 - `rtl/fpga_test/i3c_demo_rate_tick.v`: Generic tick divider used by FPGA-test controller and target demo wrappers.
 - `rtl/fpga_test/i3c_sensor_frame_gen.v`: Deterministic target-side sample/signature generator for FPGA validation.
+- `rtl/fpga_test/i3c_sensor_gpio_target_demo.v`: Dual-target lab wrapper with a small register map, writable LED-control register, signature bytes, and sensor-payload window.
 - `rtl/fpga_test/i3c_sensor_target_demo.v`: Target demo wrapper that combines the frame generator with the existing target transport/CCC shell.
 - `rtl/fpga_test/i3c_sensor_controller_demo.v`: Controller demo wrapper that performs static-assisted `SETDASA` boot, configures all 5 endpoints, and captures payloads into controller-side buffers.
+- `rtl/fpga_test/i3c_dual_target_lab_controller.v`: Two-target known-device controller wrapper for the CMOD lab system, including direct-CCC boot, periodic polling, host-triggered private reads/writes, and targeted `GETSTATUS`/`SETDASA` recovery.
 - `rtl/fpga_test/spartan7_i3c_controller_demo_top.v`: Spartan-7 controller wrapper for the FPGA-validation stack.
+- `rtl/fpga_test/spartan7_i3c_dual_target_lab_top.v`: Dedicated CMOD S7 top for the dual-target UART-controlled lab demo.
 - `rtl/fpga_test/spartan7_i3c_target_demo_top.v`: Spartan-7 target wrapper for the FPGA-validation stack.
 - `rtl/fpga_test/spartan7_i3c_unified_demo_top.v`: Unified single-board demo: controller + 5 internal targets + UART command interface.
 - `rtl/uart_tx.v`: 8N1 UART transmitter (115200 baud, 100 MHz clock).
 - `rtl/uart_rx.v`: 8N1 UART receiver with double-flop synchronizer.
 - `rtl/uart_cmd_handler.v`: UART command state machine for demo control (start/read/status).
+- `rtl/uart_dual_target_lab_cmd_handler.v`: Binary UART request/response bridge for target A/B summary, register reads, and register writes.
 - `tools/uart_interface.py`: Python pyserial host tool for UART command interface.
+- `tools/dual_target_lab_client.py`: Python UART client for the dual-target CMOD lab demo.
+- `software/dual_target_lab_backend/app.py`: FastAPI backend exposing the dual-target lab controller over HTTP.
+- `software/dual_target_lab_frontend/app/page.tsx`: Next.js dashboard for target A/B status, payloads, and LED control.
 - `tb/i3c_target_model.v`: Simple behavioral target model for simulation.
 - `tb/tb_i3c_sdr_controller.v`: Happy-path testbench that runs one write + one read transaction.
 - `tb/tb_i3c_sdr_nack.v`: Negative-path testbench that verifies address-miss NACK handling.
@@ -161,6 +168,7 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `tb/tb_i3c_ctrl_top_service.v`: End-to-end controller/target regression proving scheduled policy entries turn into real class-specific write-then-read service templates, multi-byte read capture, selector writes, success/NACK service statistics, and recovery clear after repeated service failures.
 - `tb/tb_i3c_five_target_sampling_system.v`: Five-endpoint reference-system regression covering equal-rate polling, 10-byte per-endpoint sensor payloads, selector-write configuration, and round-robin service across identical targets.
 - `tb/tb_i3c_fpga_test_system.v`: FPGA-validation regression covering on-bus `SETDASA` bring-up, deterministic target signatures, and controller-side capture of all 5 endpoint streams.
+- `tb/tb_i3c_dual_target_lab_controller.v`: End-to-end regression for the new dual-target CMOD lab controller, including boot, polling, manual register reads/writes, and target LED control.
 - `tb/tb_i3c_known_target_hub.v`: End-to-end regression for the fixed known-target hub path, covering verified boot, scheduled service, targeted endpoint recovery after dynamic-address loss, and fault-diagnostic IBI policy handling.
 - `tb/tb_i3c_event_policy_ccc.v`: Integration regression for `ENEC`/`DISEC` target policy updates and mirrored controller-side event-mask state.
 - `tb/tb_i3c_reset_status_policy.v`: Integration regression for direct `RSTACT`/`GETSTATUS`, broadcast `RSTDAA`/`SETAASA`, and mirrored controller-side reset/status policy tracking across recovery transitions.
@@ -176,6 +184,7 @@ This is the fastest map of what each I3C feature does in this system and how far
 - `docs/I3C_Controller_Target_Implementation_Plan.md`: detailed controller/target RTL implementation plan.
 - `docs/FPGA_Synthesis_Notes.md`: FPGA synthesis technical notes — async-to-sync rewrite, open-drain bus, MMCM, bitstream config.
 - `docs/UART_Interface.md`: UART command protocol and Python tool documentation.
+- `docs/Dual_Target_Lab_Interface.md`: Dual-target CMOD lab UART/API/dashboard protocol and software-stack notes.
 - `docs/I3C_Full_Controller_Matrix.md`: branch-local CCC coverage matrix for the broader full-controller implementation effort.
 - `docs/I3C_Full_Controller_Roadmap.md`: staged roadmap for the first three controller-expansion waves and the later deferred families.
 - `docs/chat_summaries/`: archived markdown summaries from the earlier project threads.
@@ -205,6 +214,7 @@ What now exists beyond the original Phase 0 baseline:
 - five-endpoint reference-system bench for identical sensor targets with 10-byte payload service templates and equal-rate polling
 - separated FPGA-validation stack under `rtl/fpga_test/` with static-assisted controller boot, deterministic target sample generation, and controller-side sample buffers
 - dedicated regressions for target transport and DAA state behavior
+- a dedicated dual-target CMOD S7 lab stack with two writable register-mapped sensor targets, host-driven target A/B register access, per-target LED outputs, and a Python/FastAPI/Next.js software path
 
 It gives you a clean path to:
 
@@ -271,6 +281,7 @@ The I3C demo has been brought up on a **Digilent CMOD S7** (XC7S25-1CSGA225). Tw
 | Configuration | Top Module | External I3C Pins | UART | Use Case |
 | --- | --- | --- | --- | --- |
 | Controller-only | `spartan7_i3c_controller_demo_top` | Yes (Pmod JA) | No | External target boards on real bus |
+| Dual-target lab | `spartan7_i3c_dual_target_lab_top` | No | Yes | Self-contained controller + 2 writable targets + host dashboard |
 | Unified (recommended) | `spartan7_i3c_unified_demo_top` | No | Yes | Self-contained demo, controller + 5 targets on one FPGA |
 
 ### Quick Start — Unified Demo
@@ -293,7 +304,43 @@ Program the CMOD S7 over JTAG:
 vivado -mode batch -source scripts/program_cmod_s7.tcl
 ```
 
-The bitstream path is `build/i3c_demo/i3c_demo.runs/impl_1/spartan7_i3c_controller_demo_top.bit`.
+The bitstream path is `build/i3c_demo/i3c_demo.runs/impl_1/spartan7_i3c_unified_demo_top.bit`.
+
+### Quick Start — Dual-Target Lab Demo
+
+Build the dedicated dual-target lab image:
+
+```bash
+vivado -mode batch -source scripts/vivado_build_dual_target_lab.tcl
+```
+
+Program it:
+
+```bash
+vivado -mode batch -source scripts/program_cmod_s7_dual_target_lab.tcl
+```
+
+The generated bitstream path is `build/i3c_dual_target_lab/i3c_dual_target_lab.runs/impl_1/spartan7_i3c_dual_target_lab_top.bit`.
+
+Use the Python client:
+
+```bash
+pip install pyserial
+
+python tools/dual_target_lab_client.py start
+python tools/dual_target_lab_client.py status
+python tools/dual_target_lab_client.py summary 0
+python tools/dual_target_lab_client.py summary 1
+python tools/dual_target_lab_client.py read 0 0x10 10
+python tools/dual_target_lab_client.py write 1 0x04 0x01
+```
+
+The dual-target lab demo uses two internal targets with:
+- unique 32-bit signatures at register window `0x00..0x03`
+- a writable LED-control register at `0x04`
+- a 10-byte sensor payload window at `0x10..0x19`
+
+Each target drives one board LED through its writable control register, so the dashboard can change visible target state and read it back through the controller path.
 
 ### UART Interface
 
