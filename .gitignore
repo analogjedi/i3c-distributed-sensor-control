@@ -1,5 +1,14 @@
 .DS_Store
 
+# Frontend
+software/dual_target_lab_frontend/.next/
+software/dual_target_lab_frontend/node_modules/
+software/dual_target_lab_frontend/package-lock.json
+software/dual_target_lab_frontend/.env.local
+
+# FPGA build outputs
+build/
+
 # Local simulation outputs
 simv_*
 *.vcd

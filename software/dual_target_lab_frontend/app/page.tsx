@@ -90,6 +90,7 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [polling, setPolling] = useState(true);
 
   async function fetchJson(path: string, init?: RequestInit) {
     const response = await fetch(`${API}${path}`, {
@@ -197,11 +198,15 @@ export default function Page() {
     refresh().catch((nextError) => {
       setError(nextError instanceof Error ? nextError.message : String(nextError));
     });
+  }, []);
+
+  useEffect(() => {
+    if (!polling) return;
     const id = window.setInterval(() => {
       refresh().catch(() => undefined);
-    }, 1500);
+    }, 4000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [polling]);
 
   return (
     <main style={pageStyle}>
@@ -229,6 +234,12 @@ export default function Page() {
             style={buttonStyle("#486581", "#f0f4f8")}
           >
             Refresh Now
+          </button>
+          <button
+            onClick={() => setPolling((p) => !p)}
+            style={buttonStyle(polling ? "#c53030" : "#2f855a", "#f0f4f8")}
+          >
+            {polling ? "⏸ Pause Polling" : "▶ Resume Polling"}
           </button>
         </div>
       </section>
