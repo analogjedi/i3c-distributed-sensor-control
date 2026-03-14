@@ -91,6 +91,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [polling, setPolling] = useState(true);
+  const [pollIntervalMs, setPollIntervalMs] = useState(2000);
 
   async function fetchJson(path: string, init?: RequestInit) {
     const response = await fetch(`${API}${path}`, {
@@ -204,9 +205,9 @@ export default function Page() {
     if (!polling) return;
     const id = window.setInterval(() => {
       refresh().catch(() => undefined);
-    }, 4000);
+    }, pollIntervalMs);
     return () => window.clearInterval(id);
-  }, [polling]);
+  }, [polling, pollIntervalMs]);
 
   return (
     <main style={pageStyle}>
@@ -241,6 +242,25 @@ export default function Page() {
           >
             {polling ? "⏸ Pause Polling" : "▶ Resume Polling"}
           </button>
+          <div style={sliderWrapStyle}>
+            <label style={sliderLabelStyle}>
+              Poll: {pollIntervalMs >= 1000
+                ? `${(pollIntervalMs / 1000).toFixed(1)}s`
+                : `${pollIntervalMs}ms`}
+            </label>
+            <input
+              type="range"
+              min={100}
+              max={2000}
+              step={100}
+              value={pollIntervalMs}
+              onChange={(e) => setPollIntervalMs(Number(e.target.value))}
+              style={sliderStyle}
+            />
+            <div style={sliderTicksStyle}>
+              <span>0.1s</span><span>2s</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -350,7 +370,9 @@ function TargetPanel({
         <MetricCard label="Signature" value={target.signature_hex} />
         <MetricCard
           label="Frame Counter"
-          value={target.registers ? String(target.registers.frame_counter) : "n/a"}
+          value={target.parsed_payload.channels[0] != null
+            ? `0x${extractFc8(target.parsed_payload.channels[0], target.target).toString(16).toUpperCase().padStart(2, "0")}`
+            : "n/a"}
         />
         <MetricCard
           label="CCC Status"
@@ -365,18 +387,16 @@ function TargetPanel({
       <div style={samplePanelStyle}>
         <div style={sampleHeaderStyle}>
           <h3 style={sectionTitleStyle}>Sensor Payload</h3>
-          <code style={monoStyle}>{target.sample_payload}</code>
+          <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" as const }}>
+            <code style={monoStyle}>{target.sample_payload}</code>
+            <span style={{ ...monoStyle, color: "#f0b429" }}>
+              fc[7:0]: {target.parsed_payload.channels[0] != null
+                ? `0x${extractFc8(target.parsed_payload.channels[0], target.target).toString(16).toUpperCase().padStart(2,"0")}`
+                : "n/a"}
+            </span>
+          </div>
         </div>
-        <div style={channelGridStyle}>
-          {target.parsed_payload.channels.map((channel, index) => (
-            <MetricCard key={index} label={`Channel ${index}`} value={String(channel)} />
-          ))}
-          <MetricCard
-            label="Temperature"
-            value={target.parsed_payload.temperature?.toString() ?? "n/a"}
-          />
-          <MetricCard label="Misc" value={target.parsed_payload.misc?.toString() ?? "n/a"} />
-        </div>
+        <PayloadValidation target={target} />
       </div>
 
       <div style={sectionBlockStyle}>
@@ -463,6 +483,81 @@ function TargetPanel({
         </dl>
       </div>
     </article>
+  );
+}
+
+function extractFc8(ch0: number, targetIndex: number): number {
+  const offset = targetIndex << 8;
+  return (ch0 - 0x1000 - offset) & 0xFF;
+}
+
+function computeExpected(targetIndex: number, fc8: number) {
+  const fc4 = fc8 & 0x0F;
+  const fc5 = fc8 & 0x1F;
+  const offset = targetIndex << 8;
+  return {
+    ch0: 0x1000 + offset + fc8,
+    ch1: 0x2000 + offset + 3 * fc8,
+    ch2: 0x3000 + offset + 5 * fc8,
+    ch3: 0x4000 + offset + 7 * fc8,
+    temperature: 0x50 + targetIndex + fc4,
+    misc: ((targetIndex & 0x7) << 5) | fc5,
+  };
+}
+
+function PayloadValidation({ target }: { target: TargetSummary }) {
+  const p = target.parsed_payload;
+  const ch0 = p.channels[0];
+
+  if (ch0 === undefined || ch0 === null) {
+    return (
+      <p style={{ color: "#9fb3c8", fontSize: 13, margin: "10px 0 0" }}>
+        No payload data yet.
+      </p>
+    );
+  }
+
+  const fc8 = extractFc8(ch0, target.target);
+  const exp = computeExpected(target.target, fc8);
+
+  const rows: Array<{ label: string; actual: number | null; expected: number; anchor?: boolean }> = [
+    { label: "Ch 0", actual: p.channels[0] ?? null, expected: exp.ch0, anchor: true },
+    { label: "Ch 1", actual: p.channels[1] ?? null, expected: exp.ch1 },
+    { label: "Ch 2", actual: p.channels[2] ?? null, expected: exp.ch2 },
+    { label: "Ch 3", actual: p.channels[3] ?? null, expected: exp.ch3 },
+    { label: "Temp", actual: p.temperature, expected: exp.temperature },
+    { label: "Misc", actual: p.misc, expected: exp.misc },
+  ];
+
+  return (
+    <div style={{ marginTop: 14, overflowX: "auto" as const }}>
+      <table style={validationTableStyle}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Field</th>
+            <th style={thStyle}>Expected</th>
+            <th style={thStyle}>Actual</th>
+            <th style={thStyle}>Match</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ label, actual, expected, anchor }) => {
+            const match = actual !== null && actual === expected;
+            const rowTone = actual === null ? "neutral" : match ? "good" : "bad";
+            return (
+              <tr key={label} style={validationRowStyle(rowTone)}>
+                <td style={tdStyle}>
+                  {label}{anchor ? <span style={{ color: "#9fb3c8", fontSize: 11 }}> (anchor)</span> : ""}
+                </td>
+                <td style={{ ...tdStyle, fontFamily: "monospace" }}>{expected}</td>
+                <td style={{ ...tdStyle, fontFamily: "monospace" }}>{actual ?? "n/a"}</td>
+                <td style={{ ...tdStyle, fontSize: 16 }}>{actual === null ? "—" : match ? "✅" : "🔴"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -830,3 +925,61 @@ const monoStyle = {
   color: "#9fb3c8",
   fontSize: 12,
 };
+
+const validationTableStyle = {
+  width: "100%",
+  borderCollapse: "collapse" as const,
+  fontSize: 13,
+};
+
+const thStyle = {
+  textAlign: "left" as const,
+  padding: "6px 10px",
+  color: "#9fb3c8",
+  fontSize: 11,
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.07em",
+  borderBottom: "1px solid rgba(148,163,184,0.15)",
+};
+
+const tdStyle = {
+  padding: "7px 10px",
+  color: "#f0f4f8",
+};
+
+const sliderWrapStyle = {
+  display: "grid",
+  gap: 4,
+  alignContent: "center",
+  minWidth: 160,
+};
+
+const sliderLabelStyle = {
+  fontSize: 12,
+  color: "#bcccdc",
+  textTransform: "uppercase" as const,
+  letterSpacing: "0.08em",
+  textAlign: "center" as const,
+};
+
+const sliderStyle = {
+  width: "100%",
+  accentColor: "#f0b429",
+  cursor: "pointer",
+};
+
+const sliderTicksStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  fontSize: 10,
+  color: "#9fb3c8",
+};
+
+function validationRowStyle(tone: "good" | "bad" | "neutral") {
+  const bg = tone === "good"
+    ? "rgba(47,133,90,0.12)"
+    : tone === "bad"
+    ? "rgba(197,48,48,0.14)"
+    : "transparent";
+  return { background: bg };
+}
