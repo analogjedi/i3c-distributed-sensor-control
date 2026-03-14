@@ -96,7 +96,7 @@ Status payload:
 
 | Byte | Meaning |
 | --- | --- |
-| `0` | flags: `bit0=boot_done`, `bit1=boot_error`, `bit2=capture_error` |
+| `0` | flags: `bit0=boot_done`, `bit1=boot_error`, `bit2=capture_error`, `bit3=recovery_active` |
 | `1` | verified bitmap |
 | `2` | sample-valid bitmap |
 | `3` | target LED-state bitmap |
@@ -142,6 +142,7 @@ FastAPI backend:
 
 Endpoints:
 
+- `GET /api/dashboard`
 - `POST /api/start`
 - `GET /api/status`
 - `GET /api/targets/{target}`
@@ -156,6 +157,19 @@ Next.js frontend:
 The frontend is intentionally small:
 
 - start the demo
-- poll status
-- read target A/B summaries
+- poll a combined dashboard view
+- read target A/B summaries and decoded register fields
 - toggle each target LED through the real controller-to-target write path
+- issue ad hoc register reads and writes against either target
+
+## CMOD LED Mapping (Dual-Target Lab Demo)
+
+| LED | Meaning |
+| --- | --- |
+| LED0 | Target A writable output state |
+| LED1 | Target B writable output state |
+| LED2 | Target A sample-valid status |
+| LED3 | Target B sample-valid status |
+| RGB blue | Recovery active |
+| RGB green | Boot done |
+| RGB red | Boot or capture error |

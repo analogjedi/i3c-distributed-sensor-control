@@ -6,6 +6,8 @@ simv_*
 
 # Local scratch and rendered artifacts
 tmp/
+__pycache__/
+*.pyc
 
 # Local chat exports and notes
 docs/chat_summaries/

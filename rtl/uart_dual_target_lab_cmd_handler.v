@@ -16,6 +16,7 @@ module uart_dual_target_lab_cmd_handler #(
     input  wire                           boot_done,
     input  wire                           boot_error,
     input  wire                           capture_error,
+    input  wire                           recovery_active,
     input  wire [1:0]                     verified_bitmap,
     input  wire [1:0]                     sample_valid_bitmap,
     input  wire [1:0]                     target_led_state,
@@ -138,7 +139,7 @@ module uart_dual_target_lab_cmd_handler #(
 
                                         CMD_STATUS: begin
                                             prepare_response_header(STS_OK, 8'd4);
-                                            resp[3] <= {5'b0, capture_error, boot_error, boot_done};
+                                            resp[3] <= {4'b0, recovery_active, capture_error, boot_error, boot_done};
                                             resp[4] <= {6'b0, verified_bitmap};
                                             resp[5] <= {6'b0, sample_valid_bitmap};
                                             resp[6] <= {6'b0, target_led_state};

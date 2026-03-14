@@ -388,6 +388,7 @@ NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000 npm run dev
 
 That gives you:
 
+- `GET /api/dashboard`
 - `POST /api/start`
 - `GET /api/status`
 - `GET /api/targets/0`
@@ -444,12 +445,19 @@ For full protocol details, see [docs/UART_Interface.md](docs/UART_Interface.md).
 
 ### LED Indicators
 
+For the dual-target lab demo (`spartan7_i3c_dual_target_lab_top`):
+
 | LED | Signal | Meaning |
 | --- | --- | --- |
-| LED0–LED3 (discrete) | `sample_valid[3:0]` | Target 0–3 payload captured |
-| RGB blue | `sample_valid[4]` | Target 4 payload captured |
+| LED0 | `target_a_output` | Target A writable output/LED state, driven from register `0x04` through the controller path |
+| LED1 | `target_b_output` | Target B writable output/LED state, driven from register `0x04` through the controller path |
+| LED2 | `sample_valid_a` | Target A sample window has been captured successfully |
+| LED3 | `sample_valid_b` | Target B sample window has been captured successfully |
+| RGB blue | `recovery_active` | Controller is in targeted endpoint recovery |
 | RGB green | `boot_done` | I3C bus bring-up complete |
 | RGB red | `boot_error \| capture_error` | Any error during boot or capture |
+
+The larger unified five-target reference still uses the older sample-valid-oriented LED mapping, but the dual-target lab image now prioritizes host-visible target output control over synthetic target-count theatrics.
 
 ### Hardware Connections (Controller-Only Mode)
 

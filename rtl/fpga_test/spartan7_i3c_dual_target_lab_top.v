@@ -107,6 +107,7 @@ module spartan7_i3c_dual_target_lab_top #(
     wire       boot_done;
     wire       boot_error;
     wire       capture_error;
+    wire       recovery_active;
     wire [1:0] verified_bitmap;
     wire [1:0] sample_valid_bitmap;
     wire [1:0] target_led_state;
@@ -136,7 +137,7 @@ module spartan7_i3c_dual_target_lab_top #(
     assign led_sample_valid[1] = tgt1_indicator;
     assign led_sample_valid[2] = sample_valid_bitmap[0];
     assign led_sample_valid[3] = sample_valid_bitmap[1];
-    assign led_sv4             = &verified_bitmap;
+    assign led_sv4             = recovery_active;
     assign led_boot_done       = boot_done;
     assign led_error           = boot_error | capture_error;
 
@@ -155,6 +156,7 @@ module spartan7_i3c_dual_target_lab_top #(
         .boot_done        (boot_done),
         .boot_error       (boot_error),
         .capture_error    (capture_error),
+        .recovery_active  (recovery_active),
         .verified_bitmap  (verified_bitmap),
         .sample_valid_bitmap(sample_valid_bitmap),
         .target_led_state (target_led_state),
@@ -198,7 +200,7 @@ module spartan7_i3c_dual_target_lab_top #(
         .boot_done             (boot_done),
         .boot_error            (boot_error),
         .capture_error         (capture_error),
-        .recovery_active       (),
+        .recovery_active       (recovery_active),
         .verified_bitmap       (verified_bitmap),
         .sample_valid_bitmap   (sample_valid_bitmap),
         .target_led_state      (target_led_state),

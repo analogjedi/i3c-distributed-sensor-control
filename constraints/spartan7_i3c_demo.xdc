@@ -8,13 +8,17 @@ create_clock -period 83.333 -name sys_clk [get_ports clk_12mhz]
 ## Active-high reset button (BTN0)
 set_property -dict { PACKAGE_PIN D2  IOSTANDARD LVCMOS33 } [get_ports btn_reset]
 
-## Discrete LEDs (active-high) — sample_valid[3:0]
+## Discrete LEDs (active-high) — top-level-defined meaning
+## Dual-target lab: LED0/1 = target outputs, LED2/3 = sample-valid A/B
+## Unified five-target reference: sample-valid[3:0]
 set_property -dict { PACKAGE_PIN E2  IOSTANDARD LVCMOS33 } [get_ports {led_sample_valid[0]}]
 set_property -dict { PACKAGE_PIN K1  IOSTANDARD LVCMOS33 } [get_ports {led_sample_valid[1]}]
 set_property -dict { PACKAGE_PIN J1  IOSTANDARD LVCMOS33 } [get_ports {led_sample_valid[2]}]
 set_property -dict { PACKAGE_PIN E1  IOSTANDARD LVCMOS33 } [get_ports {led_sample_valid[3]}]
 
-## RGB LED — sample_valid[4] (blue), boot_done (green), error (red)
+## RGB LED — top-level-defined meaning
+## Dual-target lab: recovery_active (blue), boot_done (green), error (red)
+## Unified five-target reference: sample_valid[4] (blue), boot_done (green), error (red)
 set_property -dict { PACKAGE_PIN F1  IOSTANDARD LVCMOS33 } [get_ports led_sv4]
 set_property -dict { PACKAGE_PIN D3  IOSTANDARD LVCMOS33 } [get_ports led_boot_done]
 set_property -dict { PACKAGE_PIN F2  IOSTANDARD LVCMOS33 } [get_ports led_error]

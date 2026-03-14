@@ -95,6 +95,7 @@ class DualTargetLabClient:
             "boot_done": bool(flags & 0x01),
             "boot_error": bool(flags & 0x02),
             "capture_error": bool(flags & 0x04),
+            "recovery_active": bool(flags & 0x08),
             "verified_bitmap": verified & 0x03,
             "sample_valid_bitmap": sample_valid & 0x03,
             "target_led_state": led_state & 0x03,
