@@ -1,14 +1,53 @@
 # I3C Distributed Sensor Control Baseline
 
-This repository is the RTL, verification, and architecture baseline for a closed-system I3C sensor-control platform.
+This repository is the RTL, verification, FPGA demo, and software-control baseline for a closed-system I3C controller platform.
 
-The intended end-to-end system is:
+## Current Flagship Demo
 
-1. one hub controller that owns bus policy, address assignment, polling, recovery, and long-term event handling
-2. multiple target endpoints that expose sensor or actuator-facing register/data behavior behind a common I3C transport shell
-3. a deterministic boot and service flow built around CCCs, dynamic addressing, scheduled traffic, and bounded recovery behavior
+The most useful top-level image on this branch is:
 
-Current reference system configuration in the repo:
+- [rtl/fpga_test/spartan7_i3c_dual_target_lab_top.v](/Users/jhaas/Development/Digital_Design/rtl/fpga_test/spartan7_i3c_dual_target_lab_top.v)
+
+That CMOD S7 demo contains:
+
+- 1 internal I3C controller
+- 2 identical internal I3C targets
+- deterministic target signatures readable through the controller
+- 10-byte sensor-style payload windows per target
+- one writable control register per target that drives a visible LED/output
+- UART command transport
+- Python client, FastAPI backend, and Next.js dashboard scaffolding
+
+If you want the shortest path to “program FPGA, inspect target A/B, read payloads, and toggle outputs,” this is the path to use.
+
+## What This Branch Is Good At
+
+This branch is already strong in the practical subset that matters for a closed manufactured system:
+
+- robust single-controller SDR transactions
+- known-target bring-up with direct CCC boot
+- predictable scheduled polling/service
+- targeted reset/recovery for misbehaving endpoints
+- narrow fault-diagnostic IBI policy handling
+- interactive FPGA validation with host-visible reads and writes
+
+It is not claiming full spec closure across every advanced I3C family. It is claiming a serious controller baseline that now has an interactive hardware demo instead of just a pile of simulations and good intentions.
+
+## Dual-Target Lab System
+
+The dual-target lab configuration is:
+
+- 1 controller plus 2 internal targets
+- static target addresses `0x30` and `0x31`
+- controller-assigned dynamic addresses `0x10` and `0x11`
+- deterministic target signatures at register window `0x00..0x03`
+- writable target output/LED control register at `0x04`
+- 10-byte sensor payload window at `0x10..0x19`
+- equal-rate background polling plus host-triggered direct reads/writes
+
+## Larger Reference System
+
+The broader repo still includes the larger five-target reference configuration:
 
 - 1 controller plus 5 sensor endpoints
 - static-assisted boot for the FPGA validation stack
@@ -191,10 +230,21 @@ This is the fastest map of what each I3C feature does in this system and how far
 
 ## Important Scope Notes
 
-The RTL in this repo is still a bring-up baseline plus early Phase 1 scaffolding, not a full I3C Basic implementation. It does **not** yet include:
+The RTL in this repo is no longer just a bring-up skeleton, but it is still not a complete “every optional I3C family is closed” implementation.
 
-- In-band interrupts (IBI)
+What is true now:
+
+- full SDR controller/target behavior is substantial and regression-backed
+- direct/broadcast CCC coverage is meaningful for closed-system control
+- targeted reset/recovery exists for the known-target subset
+- a narrow fault-diagnostic IBI policy hook exists in [rtl/i3c_known_target_hub.v](/Users/jhaas/Development/Digital_Design/rtl/i3c_known_target_hub.v)
+- the dual-target CMOD lab system supports real host-triggered target reads and writes
+
+What is still not here:
+
+- full on-bus IBI protocol implementation
 - HDR modes
+- full closure across every advanced Basic-spec command family
 
 What now exists beyond the original Phase 0 baseline:
 
@@ -276,35 +326,13 @@ In short:
 
 ## Hardware Bring-Up: CMOD S7
 
-The I3C demo has been brought up on a **Digilent CMOD S7** (XC7S25-1CSGA225). Two demo configurations are available:
+The I3C demo has been brought up on a **Digilent CMOD S7** (XC7S25-1CSGA225). For this branch, the primary hardware path is the dual-target lab image because it is the most interactive controller demo and the best fit for real host-driven testing.
 
 | Configuration | Top Module | External I3C Pins | UART | Use Case |
 | --- | --- | --- | --- | --- |
-| Controller-only | `spartan7_i3c_controller_demo_top` | Yes (Pmod JA) | No | External target boards on real bus |
-| Dual-target lab | `spartan7_i3c_dual_target_lab_top` | No | Yes | Self-contained controller + 2 writable targets + host dashboard |
-| Unified (recommended) | `spartan7_i3c_unified_demo_top` | No | Yes | Self-contained demo, controller + 5 targets on one FPGA |
-
-### Quick Start — Unified Demo
-
-Build the bitstream:
-
-```bash
-vivado -mode batch -source scripts/vivado_build.tcl
-```
-
-This defaults to part `xc7s25csga225-1` and project name `i3c_demo`. Override with:
-
-```bash
-vivado -mode batch -source scripts/vivado_build.tcl -tclargs <part> <project_name>
-```
-
-Program the CMOD S7 over JTAG:
-
-```bash
-vivado -mode batch -source scripts/program_cmod_s7.tcl
-```
-
-The bitstream path is `build/i3c_demo/i3c_demo.runs/impl_1/spartan7_i3c_unified_demo_top.bit`.
+| Dual-target lab (recommended interactive demo) | `spartan7_i3c_dual_target_lab_top` | No | Yes | Self-contained controller + 2 writable targets + host dashboard |
+| Unified five-target reference | `spartan7_i3c_unified_demo_top` | No | Yes | Self-contained demo, controller + 5 targets on one FPGA |
+| Controller-only external-bus demo | `spartan7_i3c_controller_demo_top` | Yes (Pmod JA) | No | External target boards on real bus |
 
 ### Quick Start — Dual-Target Lab Demo
 
@@ -342,9 +370,56 @@ The dual-target lab demo uses two internal targets with:
 
 Each target drives one board LED through its writable control register, so the dashboard can change visible target state and read it back through the controller path.
 
+Optional software stack:
+
+```bash
+# Backend
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r software/dual_target_lab_backend/requirements.txt
+export DUAL_TARGET_LAB_PORT=/dev/ttyUSB1
+uvicorn software.dual_target_lab_backend.app:app --reload
+
+# Frontend
+cd software/dual_target_lab_frontend
+npm install
+NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000 npm run dev
+```
+
+That gives you:
+
+- `POST /api/start`
+- `GET /api/status`
+- `GET /api/targets/0`
+- `GET /api/targets/1`
+- target register read/write endpoints through the FastAPI bridge
+- a Next.js dashboard for target A/B summary and LED control
+
+### Quick Start — Unified Five-Target Reference
+
+Build the bitstream:
+
+```bash
+vivado -mode batch -source scripts/vivado_build.tcl
+```
+
+This defaults to part `xc7s25csga225-1` and project name `i3c_demo`. Override with:
+
+```bash
+vivado -mode batch -source scripts/vivado_build.tcl -tclargs <part> <project_name>
+```
+
+Program the CMOD S7 over JTAG:
+
+```bash
+vivado -mode batch -source scripts/program_cmod_s7.tcl
+```
+
+The bitstream path is `build/i3c_demo/i3c_demo.runs/impl_1/spartan7_i3c_unified_demo_top.bit`.
+
 ### UART Interface
 
-The unified demo exposes a UART command interface at **115200 baud, 8N1** over the FT2232H USB-UART bridge (FPGA TX=L12, RX=K15). A Python host tool is provided:
+Both CMOD UART-based demos expose a command interface at **115200 baud, 8N1** over the FT2232H USB-UART bridge (FPGA TX=L12, RX=K15). The unified five-target reference uses the simpler Python host tool:
 
 ```bash
 # Install dependency
